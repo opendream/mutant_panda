@@ -20,11 +20,11 @@ class Video
   property :profile, String
   property :profile_title, String
   property :player, String
-  property :queued_at, Time, :default => nil
-  property :started_encoding_at, Time, :default => 0
+  property :queued_at, DateTime
+  property :started_encoding_at, DateTime, :default => 0
   property :encoding_time, String
   property :encoded_at, String
-  property :last_notification_at, Time, :default => 0
+  property :last_notification_at, DateTime, :default => 0
   # This is to fill the gap of different behavior between MySQL
   # and SimpleDB in use of null.
   # At MySQL, it won't pick up NULL: eg, notification.not 'success'

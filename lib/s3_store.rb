@@ -1,3 +1,5 @@
+if Panda::Config[:videos_store] == :s3
+
 class S3VideoObject < AWS::S3::S3Object
   set_current_bucket_to Panda::Config[:s3_videos_bucket]
 end
@@ -69,4 +71,6 @@ class S3Store < AbstractStore
   def url(key)
     %(http://#{Panda::Config[:videos_domain]}/#{key})
   end
+end
+
 end
