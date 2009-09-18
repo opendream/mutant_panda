@@ -1,55 +1,22 @@
-# Example for mysql
-#
-:development: &defaults
-  :adapter: mysql
-  :database: panda_development
-  :username: root
-  :password: 
-  :host: localhost
-  :encoding: utf8
+# Example database configuration for panda
 
-:test:
-  <<: *defaults
-  :adapter: mysql
-  :database: panda_test
+:development: &defaults
+  :adapter: sqlite3
+  :database: db/development.db 
 
 :production: &prod
   :adapter: mysql
   :database: panda_production
-  :username: root
-  :password: 
+  :username: panda
+  :password: panda-password
   :host: localhost
   :encoding: utf8
+  :socket: /var/run/mysqld/mysqld.sock
 
-:encoder:
+:test:
   <<: *prod
+  :database: panda_test
 
-:notifier:
-  <<: *prod
-
-# :development: &defaults
-#   :adapter: simpledb
-#   :domain: <%= Panda::Config[:sdb_domain] %>
-#   :host: localhost
-#   :url: http://localhost:8087
-#   :access_key: test
-#   :secret_key: test
-# 
-# :test:
-#   :adapter: simpledb
-#   :domain: panda_test
-#   :host: localhost
-#   :url: http://localhost:8087
-#   :access_key: test
-#   :secret_key: test
-# 
-# :production:
-#   <<: *defaults
-#   :adapter: simpledb
-#   :domain: <%= Panda::Config[:sdb_domain] %>
-#   :access_key: <%= Panda::Config[:access_key_id] %>
-#   :secret_key: <%= Panda::Config[:secret_access_key] %>
-  
 :rake:
   <<: *defaults
 
