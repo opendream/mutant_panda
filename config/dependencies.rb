@@ -14,16 +14,17 @@ dependency("merb-cache", merb_gems_version) do
 end
 dependency "merb-helpers", merb_gems_version 
 dependency "merb-mailer", merb_gems_version  
-dependency "merb-slices", merb_gems_version  
-#dependency "merb-auth-core", merb_gems_version
-#dependency "merb-auth-more", merb_gems_version
-#dependency "merb-auth-slice-password", merb_gems_version
+# dependency "merb-slices", merb_gems_version  
+# dependency "merb-auth-core", merb_gems_version
+# dependency "merb-auth-more", merb_gems_version
+# dependency "merb-auth-slice-password", merb_gems_version
 dependency "merb-param-protection", merb_gems_version
 dependency "merb-exceptions", merb_gems_version
 
 dependency "data_objects", do_gems_version
 dependency "do_sqlite3", do_gems_version  # If using another database, replace/comment/etc this
 dependency "do_mysql", do_gems_version
+
 dependency "dm-core", dm_gems_version         
 dependency "dm-aggregates", dm_gems_version   
 dependency "dm-migrations", dm_gems_version   
@@ -36,8 +37,10 @@ dependency "merb_datamapper", merb_gems_version
 
 
 dependency 'RubyInline', :require_as => 'inline'
-dependency 'uuid'
+# dependency 'uuid'
+dependency 'uuidtools', '~> 1.0.7'
 dependency 'activesupport', '2.3.4'  # needed by greatseth-rvideo
 dependency 'greatseth-rvideo', :require_as => 'rvideo'  # a gem from github: gem install greatseth-rvideo -s http://gems.github.com
 #dependency 'aws-s3', :require_as => 'aws/s3'  # when using S3
 dependency 'shared-mime-info'
+dependency 'state_machine'

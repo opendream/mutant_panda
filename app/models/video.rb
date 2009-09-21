@@ -1,12 +1,5 @@
-class Video
-  include DataMapper::Resource
-  include LocalStore
+class Video < Asset
   
-  property :id, UUIDIndex, :key => true
-  property :filename, String
-  property :original_filename, String
-  property :parent, String
-  property :status, String
   property :duration, Integer
   property :container, String
   property :width, Integer
@@ -17,35 +10,31 @@ class Video
   property :audio_codec,String 
   property :audio_bitrate, String
   property :audio_sample_rate, String
-  property :profile, String
-  property :profile_title, String
-  property :player, String
-  property :queued_at, DateTime
-  property :started_encoding_at, DateTime, :default => 0
+
   property :encoding_time, String
   property :encoded_at, String
-  property :last_notification_at, DateTime, :default => 0
-  # This is to fill the gap of different behavior between MySQL
-  # and SimpleDB in use of null.
-  # At MySQL, it won't pick up NULL: eg, notification.not 'success'
-  # If you try to search non nil: eg, notification.not = nil
-  # Then SimpleDB fails as Simpledb can not be searchable by nil
-  # As a workaround, I forced default as empty string
-  property :notification, String, :default => '', :nullable => false
-  property :updated_at, Time, :default => 0
-  property :created_at, Time, :default => 0
+
   property :thumbnail_position, String
-  
-  # TODO: state machine for status
-  # An original video can either be 'empty' if it hasn't had the video file uploaded, or 'original' if it has
-  # An encoding will have it's original attribute set to the key of the original parent, and a status of 'queued', 'processing', 'success', or 'error'
-  
-  def self.create_empty
-    video = Video.new
-    video.status = 'empty'
-    video.save
-    
-    return video
+
+  property :derived_assets, Json
+
+
+  def self.accepts_file?(tmp_file, mimetype)
+    return false if Video.blacklisted_mimetypes.include? mimetype
+    inspector = RVideo::Inspector.new(:file => tmp_file)
+    return (inspector.valid? and inspector.video?)
+  end
+
+  # re-implemented
+  def process_payload
+    pick_metadata
+    queue_for_processing
+    send_to_store
+  end
+
+  # mimetype that we for sure cannot handle (we further accept files base on RVideo inspectors judgement)
+  def self.blacklisted_mimetypes
+    Image.accepted_mimetypes + %w{some/x-type other/x-type}  # blacklist all image types + more
   end
   
   def clipping(position = nil)
@@ -58,31 +47,12 @@ class Video
     end
   end
   
-  # Classification
-  # ==============
-  
-  def encoding?
-    ['queued', 'processing', 'success', 'error'].include?(self.status)
-  end
-  
-  def parent?
-    ['original', 'empty'].include?(self.status)
-  end
-  
+
   # Finders
   # =======
   
-  # Original videos sorted by creation date (newest first)
-  def self.all_originals
-    # This fails with simpledb adaptor (sort order is random it seems)
-    # self.all(:status => "original", :order => [:created_at.desc])
-    
-    self.all(:status => "original").sort_by { |o| o.created_at }.reverse
-  end
-  
   def self.queued_encodings
-    self.all(:status => 'queued') + self.all(:status => "processing")
-    
+    self.all(:status => 'queued_for_encoding') + self.all(:status => 'processing')
     # TODO: Doesn't work
     # self.all(:status => ['queued', 'processing'])
   end
@@ -90,18 +60,13 @@ class Video
   def self.next_job
     # TODO: Doesn't work
     # self.first(:status => "queued")
-    
-    self.all(:status => "queued").sort_by { |o| o.created_at }.first
+    self.all(:status => 'queued_for_encoding').sort_by { |o| o.created_at }.first
   end
   
   def self.outstanding_notifications
     # TODO: Do this in one query
     self.all(:notification.not => "success", :notification.not => "error", :status => "success") +
     self.all(:notification.not => "success", :notification.not => "error", :status => "error") 
-  end
-  
-  def parent_video
-    self.class.get(self.parent)
   end
   
   def encodings
@@ -129,24 +94,6 @@ class Video
     end
     self.destroy
   end
-
-  # Location to store video file fetched from S3 for encoding
-  def tmp_filepath
-    private_filepath(self.filename)
-  end
-  
-  # Has the actual video file been uploaded for encoding?
-  def empty?
-    self.status == 'empty'
-  end
-  
-  def upload_redirect_url
-    Panda::Config[:upload_redirect_url].gsub(/\$id/, self.id)
-  end
-  
-  def state_update_url
-    Panda::Config[:state_update_url].gsub(/\$id/, self.id)
-  end
   
   def duration_str
     s = (self.duration.to_i || 0) / 1000
@@ -154,7 +101,7 @@ class Video
   end
   
   def resolution
-    self.width ? "#{self.width}x#{self.height}" : nil
+    (width and height) ? "#{self.width}x#{self.height}" : nil
   end
   
   def video_bitrate_in_bits
@@ -165,26 +112,10 @@ class Video
     self.audio_bitrate.to_i * 1024
   end
   
-  # Encding attr helpers
-  # ====================
-  
-  def url
-    Store.url(self.filename)
-  end
-  
   # Interaction with store
   # ======================
   
-  def upload_to_store
-    Store.set(self.filename, self.tmp_filepath)
-  end
-  
-  def fetch_from_store
-    Store.get(self.filename, self.tmp_filepath)
-  end
-  
-  # Deletes the video file without raising an exception if the file does 
-  # not exist.
+  # reimplemented
   def delete_from_store
     Store.delete(self.filename)
     self.clippings.each { |c| c.delete_from_store }
@@ -196,17 +127,11 @@ class Video
   
   # Returns configured number of 'middle points', for example [25,50,75]
   def thumbnail_percentages
-    n = Panda::Config[:choose_thumbnail]
-    
-    return [50] if n == false
-    
-    # Interval length
-    interval = 100.0 / (n + 1)
-    # Points is [0,25,50,75,100] for example
-    points = (0..(n + 1)).map { |p| p * interval }.map { |p| p.to_i }
-    
-    # Don't include the end points
-    return points[1..-2]
+    n = Merb::Config[:video_stills]
+    return [50] unless n
+    interval = 100.0 / (n + 1)  # interval length
+    points = (0..(n + 1)).map { |p| p * interval }.map { |p| p.to_i }  # i.e.: [0,25,50,75,100] with n=3
+    return points[1..-2]  # don't include the first and the last
   end
   
   def generate_thumbnail_selection
@@ -223,33 +148,7 @@ class Video
     end
   end
   
-  # Checks that video can accept new file, checks that the video is valid, 
-  # reads some metadata from it, and moves video into a private tmp location.
-  # 
-  # File is the tempfile object supplied by merb. It looks like
-  # {
-  #   "content_type"=>"video/mp4", 
-  #   "size"=>100, 
-  #   "tempfile" => @tempfile, 
-  #   "filename" => "file.mov"
-  # }
-  # 
-  def initial_processing(file)
-    raise NoFileSubmitted if !file || file.blank?
-    raise NotValid unless self.empty?
-    
-    # Set filename and original filename
-    self.filename = self.id + File.extname(file[:filename])
-    # Split out any directory path Windows adds in
-    self.original_filename = file[:filename].split("\\\\").last
-    
-    # Move file into tmp location
-    FileUtils.mv file[:tempfile].path, self.tmp_filepath
-    
-    self.read_metadata
-    self.status = "original"
-    self.save
-  end
+
   
   # Uploads video to store, generates thumbnails if required, cleans up 
   # temporary file, and adds encodings to the encoding queue.
@@ -270,16 +169,19 @@ class Video
     FileUtils.rm self.tmp_filepath
   end
   
+  class VideoError < AssetError; end
+  class VideoFormatNotRecognized < VideoError; end
+  class VideoInvalid < VideoError; end
+  class VideoTooShort < VideoError; end
+
   # Reads information about the video into attributes.
-  # 
-  # Raises FormatNotRecognised if the video is not valid
-  # 
-  def read_metadata
+  def pick_metadata
     Merb.logger.info "#{self.id}: Reading metadata of video file"
     
-    inspector = RVideo::Inspector.new(:file => self.tmp_filepath)
+    inspector = RVideo::Inspector.new(:file => self.tmp_file_path)
     
-    raise FormatNotRecognised unless inspector.valid? and inspector.video?
+    raise VideoFormatNotRecognized unless inspector.video?
+    raise VideoInvalid unless inspector.valid?
     
     self.duration = (inspector.duration rescue nil)
     self.container = (inspector.container rescue nil)
@@ -294,7 +196,7 @@ class Video
     self.audio_sample_rate = (inspector.audio_sample_rate rescue nil)
     
     # Don't allow videos with a duration of 0
-    raise FormatNotRecognised if self.duration == 0
+    raise VideoTooShort if self.duration == 0
   end
   
   def create_encoding_for_profile(p)
@@ -336,18 +238,7 @@ class Video
     end
     return true
   end
-  
-  # Exceptions
-  
-  class VideoError < StandardError; end
-  class NotificationError < StandardError; end
-  
-  # 404
-  class NotValid < VideoError; end
-  
-  # 500
-  class NoFileSubmitted < VideoError; end
-  class FormatNotRecognised < VideoError; end
+
   
   # API
   # ===
@@ -392,7 +283,7 @@ class Video
   # =============
   
   def notification_wait_period
-    (Panda::Config[:notification_frequency] * self.notification.to_i)
+    (Merb::Config[:notification_frequency] * self.notification.to_i)
   end
   
   def time_to_send_notification?
@@ -411,7 +302,7 @@ class Video
       Merb.logger.info "Notification successfull"
     rescue
       # Increment num retries
-      if self.notification.to_i >= Panda::Config[:notification_retries]
+      if self.notification.to_i >= Merb::Config[:notification_retries]
         self.notification = 'error'
       else
         self.notification = self.notification.to_i + 1

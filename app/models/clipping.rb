@@ -2,8 +2,6 @@
 # 
 class Clipping
   
-  include LocalStore
-  
   def initialize(video, position = nil)
     @video = video
     @_position = position
@@ -41,7 +39,7 @@ class Clipping
   end
   
   def resize
-    constrain_to_height = Panda::Config[:thumbnail_height_constrain].to_f
+    constrain_to_height = Merb::Config[:thumbnail_height_constrain].to_f
     
     height = constrain_to_height
     width = (@video.width.to_f/@video.height.to_f) * height
@@ -104,7 +102,7 @@ class Clipping
   end
   
   def changeable?
-    Panda::Config[:choose_thumbnail] != false
+    Merb::Config[:choose_thumbnail] != false
   end
   
   private

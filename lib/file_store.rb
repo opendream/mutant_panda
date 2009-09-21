@@ -2,9 +2,8 @@ class FileStore < AbstractStore
   include FileUtils
   
   def initialize
-    raise Panda::ConfigError, "You must specify public_videos_dir and videos_domain to use filesystem storage" unless Panda::Config[:public_videos_dir] && Panda::Config[:videos_domain]
-    
-    @dir = Panda::Config[:public_videos_dir]
+    raise RuntimeError, "You must specify store_dir and store_base_url" unless Merb::Config[:store_dir] && Merb::Config[:store_base_url]
+    @dir = Merb::Config[:store_dir]
     mkdir_p(@dir)
   end
   
@@ -18,18 +17,20 @@ class FileStore < AbstractStore
   def get(key, tmp_file)
     cp(@dir / key, tmp_file)
   rescue
-    raise_file_error(key)
+    Merb.logger.error "Tried to get #{key} from the store but the file does not exist"
+    raise FileDoesNotExistError, "#{key} does not exist"
   end
   
   # Delete file. Returns true if success.
   def delete(key)
     rm(@dir / key)
   rescue
-    raise_file_error(key)
+    Merb.logger.error "Tried to delete #{key} from the store but the file does not exist"
+    raise FileDoesNotExistError, "#{key} does not exist"
   end
   
   # Return the publically accessible URL for the given key
   def url(key)
-    %(http://#{Panda::Config[:videos_domain]}/#{key})
+    %(http://#{Merb::Config[:store_base_url]}/#{key})
   end
 end

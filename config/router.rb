@@ -1,42 +1,13 @@
 # Merb::Router is the request routing mapper for the merb framework.
-#
-# You can route a specific URL to a controller / action pair:
-#
-#   r.match("/contact").
-#     to(:controller => "info", :action => "contact")
-#
-# You can define placeholder parts of the url with the :symbol notation. These
-# placeholders will be available in the params hash of your controllers. For example:
-#
-#   r.match("/books/:book_id/:action").
-#     to(:controller => "books")
-#   
-# Or, use placeholders in the "to" results for more complicated routing, e.g.:
-#
-#   r.match("/admin/:module/:controller/:action/:id").
-#     to(:controller => ":module/:controller")
-#
-# You can also use regular expressions, deferred routes, and many other options.
-# See merb/specs/merb/router.rb for a fairly complete usage sample.
 
 Merb.logger.info("Compiling routes...")
 Merb::Router.prepare do |r|
-  r.resources :profiles
-  r.resources :videos, :member => {:form => :get, :upload => :post, :done => :get, :state => :get, :add_to_queue => :get }, :collection => {:exp => :get} do |video|
-    video.resource :thumbnail, :controller => "thumbnail"
-    # Using get requests right now for create and update
-    video.match('/thumbnail/create').to(:controller => "thumbnail", :action => "create")
-    video.match('/thumbnail/update').to(:controller => "thumbnail", :action => "update")
-  end
-  
-  r.match("/signup").to(:controller => "accounts", :action => "new")
-  r.match("/login").to(:controller => "auth", :action => "login")
-  r.match("/logout").to(:controller => "auth", :action => "logout")
-  
-  # This is the default route for /:controller/:action/:id
-  # This is fine for most cases.  If you're heavily using resource-based˝
-  # routes, you may want to comment/remove this line to prevent
-  # clients from calling your create or destroy actions with a GET
-  # r.default_routes
-  r.match("/").to(:controller => "dashboard", :action => "index")
+  r.match("/new.js", :method => :get).to(:controller => "assets", :action => "new", :format => :json)  # can use get or post
+  r.match("/new.js", :method => :post).to(:controller => "assets", :action => "new", :format => :json)
+  r.match("/form.html", :method => :get).to(:controller => "assets", :action => "form", :format => :html)
+  r.match("/upload/:id", :method => :post).to(:controller => "assets", :action => "upload")
+  r.match("/assets/:id.js", :method => :get).to(:controller => "assets", :action => "show", :format => :json)
+  r.match("/assets/:id.js", :method => :delete).to(:controller => "assets", :action => "delete", :format => :json)
+  r.match("/info.js").to(:controller => "assets", :action => "info", :format => :json)
+  r.match("/").to(:controller => "assets", :action => "info", :format => :json)
 end

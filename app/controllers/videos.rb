@@ -1,5 +1,5 @@
 class Videos < Application
-  before :require_login, :only => [:index, :show, :destroy, :new, :create, :add_to_queue]
+#   before :require_login, :only => [:index, :show, :destroy, :new, :create, :add_to_queue]
   before :set_video, :only => [:show, :destroy, :add_to_queue]
   before :set_video_with_nice_errors, :only => [:form, :done, :state]
 

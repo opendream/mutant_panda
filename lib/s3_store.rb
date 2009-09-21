@@ -1,7 +1,7 @@
-if Panda::Config[:videos_store] == :s3
+if Merb::Config[:videos_store] == :s3
 
 class S3VideoObject < AWS::S3::S3Object
-  set_current_bucket_to Panda::Config[:s3_videos_bucket]
+  set_current_bucket_to Merb::Config[:s3_videos_bucket]
 end
 
 class S3Store < AbstractStore
@@ -9,17 +9,17 @@ class S3Store < AbstractStore
   DELAY = 3
 
   def initialize
-    raise Panda::ConfigError, "You must specify videos_domain and s3_videos_bucket to use s3 storage" unless Panda::Config[:videos_domain] && Panda::Config[:s3_videos_bucket]
+    raise RuntimeError, "You must specify videos_domain and s3_videos_bucket to use s3 storage" unless Merb::Config[:videos_domain] && Merb::Config[:s3_videos_bucket]
     
     AWS::S3::Base.establish_connection!(
-      :access_key_id     => Panda::Config[:access_key_id],
-      :secret_access_key => Panda::Config[:secret_access_key],
+      :access_key_id     => Merb::Config[:access_key_id],
+      :secret_access_key => Merb::Config[:secret_access_key],
       :persistent => false
     )
   end
   
   def self.create_bucket
-    AWS::S3::Bucket.create(Panda::Config[:s3_videos_bucket])
+    AWS::S3::Bucket.create(Merb::Config[:s3_videos_bucket])
   end
   
   # Set file. Returns true if success.
@@ -47,7 +47,8 @@ class S3Store < AbstractStore
         end
       end
     rescue AWS::S3::S3Exception
-      raise_file_error(key)
+      Merb.logger.error "Tried to get #{key} from the store but the file does not exist"
+      raise FileDoesNotExistError, "#{key} does not exist"
     else
       true
     end
@@ -61,7 +62,8 @@ class S3Store < AbstractStore
         S3VideoObject.delete(key)
       end
     rescue AWS::S3::S3Exception
-      raise_file_error(key)
+      Merb.logger.error "Tried to get #{key} from the store but the file does not exist"
+      raise FileDoesNotExistError, "#{key} does not exist"
     else
       true
     end
@@ -69,7 +71,7 @@ class S3Store < AbstractStore
   
   # Return the publically accessible URL for the given key
   def url(key)
-    %(http://#{Panda::Config[:videos_domain]}/#{key})
+    %(http://#{Merb::Config[:videos_domain]}/#{key})
   end
 end
 

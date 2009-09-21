@@ -7,7 +7,9 @@ Panda is an open source solution for video uploading, encoding and streaming.
 we forked panda in order to make it a general asset manager, rather than video only.
 we'll focus on the "dm" branch, as our target is to use it without any could services.
 the REST api will see minimal changes, mainly to facilitate non-video assets.
-
+other (proposed) changes:
+- setting profiles is done by configuration files
+- ...
 
 
 Please see [pandastream.com](http://pandastream.com/) for an introduction and lots of documentation.
