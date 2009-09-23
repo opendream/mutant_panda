@@ -1,15 +1,14 @@
-# merb -r "panda/bin/encoder.rb"
+# merb -r "bin/queue_processor.rb"
 
-Merb.logger.info 'Encoder awake!'
+Merb.logger.info 'Asset queue processor awake!'
 
 loop do
   sleep 3
-  Merb.logger.debug "Checking for messages... #{Time.now}"
-  if video = Video.next_job
+  Merb.logger.debug "Checking for jobs... #{Time.now}"
+  if obj = Asset.next_job  # return a properly casted asset, or false
     begin
-      # Wait for stuff to show up on S3 and SimpleDB
-      sleep 10
-      video.encode
+      # sleep 10  # needed to wait only for S3 and SimpleDB
+      obj.
     rescue  
       begin
         ErrorSender.log_and_email("encoding error", "Error encoding #{video.key}
