@@ -1,31 +1,72 @@
-Panda
-=====
+Mutant Panda
+============
 
-Panda is an open source solution for video uploading, encoding and streaming.
+Mutant Panda is an open source solution for asset uploading, processing (creating derived assets such as transcodings for videos, thumbnails where applicable, etc).
 
-**** THIS IS THE MUTANT PANDA FORK ****
-we forked panda in order to make it a general asset manager, rather than video only.
-we'll focus on the "dm" branch, as our target is to use it without any could services.
-the REST api will see minimal changes, mainly to facilitate non-video assets.
-other (proposed) changes:
-- setting profiles is done by configuration files
-- ...
+It is based on, as the name implies, Panda. Panda is strictly for video assets. Please see [pandastream.com](http://pandastream.com/) for more information.
 
 
-Please see [pandastream.com](http://pandastream.com/) for an introduction and lots of documentation.
+How does Mutant Panda work?
+===========================
 
-Information beyond this point is aimed at people who want to contribute to panda and / or understand how it works.
+1. Asset is uploaded to panda
+2. It checks the file's mimetype and stores the file in the right category
+3. Some categories (currently only video) they have their derived assests created by a worker process
+4. A callback sent to your web application notifying the derived assets have been created (if applicable)
 
-How does Panda work?
-====================
 
-1. Video is uploaded to panda
-2. Panda checks the video's metadata, uploads the raw file to S3 and adds it to the encoding queue
-3. The encoder application picks the encoding job off the queue when it's free and encodes the video to all possible formats
-4. Panda sends a callback to your web application notifying you the video has been encoded
-5. You use the appropriate S3 url of the encoding to embed the video
+The REST api
+============
 
-Installation and setup
-======================
+<pre>
+name       : Information on the webservice
+method     : GET
+route      : "/", "/info.js"
+params     : client, api_key
+returns    : server information as json (good for
+             testing authentication and connectivity).
 
-There are two options for running Panda. You can either the use the prebuild AMI which includes all of the software required to run Panda. Or if you wish run it locally on own your own server, you can follow the [local installation guide](http://pandastream.com/docs/local_installation).
+name       : Creating a new empty asset
+method     : GET
+route      : "/new.js"
+params     : client, api_key,
+             success_url (user is redirected here on success),
+             failure_url (and here on failure)
+returns    : a string with the ID of an empty asset.
+             use this ID when uploading, deleting or
+             requesting information on a particular asset.
+
+name       : Uploading a file to an asset
+method     : POST
+route      : "/upload/:id" (replace :id with the asset ID)
+params     : client, api_key, file
+retuns     : a redirect (307) to the success_url or
+             failure url when supplied. otherwise an accepted
+             (202) status is given on success or an error
+             status (401, 403, 404, 406, 415, 417, 500) to
+             reflect the error condition.
+comment    : use enctype='multipart/form-data' in html forms
+
+name       : Requesting information on an asset
+method     : GET
+route      : "/assets/:id.js" (replace :id with the asset ID)
+params     : client, api_key
+returns    : the information on this asset as json string (200) 
+             or an error status (401, 404) and a json string
+             reflecting the error condition.
+
+name       : Deleting an asset
+method     : DELETE
+route      : "/assets/:id.js" (replace :id with the asset ID)
+params     : client, api_key
+returns    : on success {'deleted': id} as a json string (200) 
+             or an error status (401, 404) and a json string
+             reflecting the error condition.
+
+name       : A simple form for testing purpose only!
+method     : GET
+route      : /form.html
+params     : client, api_key, id
+return     : a super minimal upload form in invalid html
+comment    : for testing only!
+</pre>

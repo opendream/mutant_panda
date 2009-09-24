@@ -9,7 +9,7 @@ jQuery.nginxUploadProgress = function(settings) {
       beforeSubmit: function(formData, jqForm, options) {
        $('#uploader').hide();
        $('#uploading').show();
-       this.timer = setInterval(function() { jQuery.nginxUploadProgressFetch(this, settings['nginx_progress_url'], settings['progress_bar_id'], settings['uuid']) }, settings['interval']);
+       this.timer = setInterval(function() { jQuery.nginxUploadProgressFetch(this, settings['nginx_progress_url'], settings['progress_bar_id'], settings['id']) }, settings['interval']);
        return true; 
      },
       complete: function(xhr, statusText)  {
@@ -38,8 +38,8 @@ jQuery.nginxUploadProgress = function(settings) {
 
 jQuery.nginxUploadProgress.inum = 0;
 
-jQuery.nginxUploadProgressFetch = function(e, nginx_progress_url, progress_bar_id, uuid) {
- // window.console.log("fetcing progress for "+uuid)
+jQuery.nginxUploadProgressFetch = function(e, nginx_progress_url, progress_bar_id, id) {
+ // window.console.log("fetcing progress for "+id)
  jQuery.nginxUploadProgress.inum++;
 
  $.ajax({
@@ -47,8 +47,8 @@ jQuery.nginxUploadProgressFetch = function(e, nginx_progress_url, progress_bar_i
    url: nginx_progress_url,
    dataType: "json",
    beforeSend: function(xhr) {
-     xhr.setRequestHeader("X-Progress-ID", uuid);
-     // window.console.log("setting headers: "+uuid)
+     xhr.setRequestHeader("X-Progress-ID", id);
+     // window.console.log("setting headers: "+id)
    },
    complete: function(xhr, statusText) {
      // window.console.log("complete!: "+statusText);

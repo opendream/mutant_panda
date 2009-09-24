@@ -17,78 +17,73 @@ class Asset
   property :mimetype, String
   property :original_mimetype, String
   property :state, String  # controlled by the state_machine
-  property :queued_at, DateTime
+  property :queued_for_processing_at, DateTime
   property :processing_started_at, DateTime
+  property :processing_finished_at, DateTime
 
   property :upload_success_redirect_url, String
   property :upload_failure_redirect_url, String
   property :notification_url, String
-  property :notification_state, String  # not_needed, delivered, delivery_failed, gave_up
+  property :notification_tries, Integer
+  property :notification_state, String  # again see state_machine
   property :last_notification_sent_at, DateTime
 
   property :updated_at, DateTime
   property :created_at, DateTime
 
   state_machine :initial => :empty do
-#     before_transition :log_state_change
-#     after_transition  :pending => :authorized, :authorized => :captured do
-#       # Update RSS feed...
-#     end
-
+    after_transition  all => :queued_for_processing do
+      self.queued_for_processing_at = Time.now
+    end
     event :upload_accepted do
       transition :empty => :pending
     end
-
     event :disapprove do
       transition [:pending, :ok] => :disapproved
     end
-
     event :skip_processing do
       transition [:pending, :disapproved, :processing_error] => :ok
     end
-
     event :queue_for_processing do
-      transition [:pending, :disapproved, :processing_error] => :queued_for_processing
+      transition [:pending, :disapproved, :processing_error, :ok] => :queued_for_processing
     end
-
     event :processing_started do
       transition :queued_for_processing => :processing
     end
- 
     event :processing_successful do
       transition :processing => :ok
     end
-
     event :processing_failed do
       transition :processing => :processing_error
     end
   end  
+
+ # unset, not_needed, pending, delivered, delivery_failed, gave_up
+  state_machine :notification_state, :initial => :notification_unset do
+    event :notification_not_needed do
+      transition all => :notification_not_needed
+    end
+    event :start_sending_notification do
+      transition all => :notification_pending
+    end
+    event :notification_delivery_successful do
+      transition [:notification_pending, :notification_delivery_failed] => :notification_delivered
+    end
+    event :notification_delivery_failed do
+      transition [:notification_pending, :notification_delivery_failed] => :notification_delivery_failed
+    end
+    event :give_up_notification_delivery do
+      transition [:notification_delivery_failed] => :notification_given_up
+    end
+  end
+
 
   class AssetError < StandardError; end
   class NoFileSubmitted < AssetError; end
   class AssetNotEmpty < AssetError; end
   class MimeTypeBlacklisted < AssetError; end
   class NotificationError < AssetError; end
-  
-  def self.next_job
-    # TODO: Doesn't work --- WHY??
-    # self.first(:status => "queued")
-    
-    self.all(:status => "queued").sort_by { |o| o.created_at }.first
-  end
-  
-  def self.outstanding_notifications
-    # TODO: Do this in one query
-    self.all(:notification.not => "success", :notification.not => "error", :status => "success") +
-    self.all(:notification.not => "success", :notification.not => "error", :status => "error") 
-  end
-    
-  # reimplement this in subclasses that have have derived assets
-  def obliterate!
-    # TODO: should this raise an exception if the file does not exist?
-    self.delete_from_store
-    self.destroy
-  end
+
 
   # basic acceptance of uploaded file
   def accept_upload(file)
@@ -96,9 +91,6 @@ class Asset
     raise AssetNotEmpty unless self.empty?  # when uploading to a non empty asset
     mimetype = MIME.check(file[:tempfile].path).type
     raise MimeTypeBlacklisted if Asset.mimetype_blacklist.include? mimetype
-  rescue => e
-    raise e
-  else
     self.filename = self.id + File.extname(file[:filename])
     self.original_filename = file[:filename].split("\\\\").last  # split out any directory path Windows adds in
     self.mimetype = mimetype
@@ -107,22 +99,30 @@ class Asset
     upload_accepted  # update state
   end
   
-  # typically reimplemented in subclasses
   # used to cast the asset to its specific type in the recast! method
+  # typically reimplemented in subclasses
   def self.accepts_file?(tmp_file, mimetype)
-    true
+    raise NotImplementedError.new("This method is only implemented in subclasses")
   end
 
-  # this is typically re-implemented in subclasses
-  def process_payload
-    skip_processing  # generic assets are not processed (yet)
-    send_to_store
+  # this method is called within the upload request, therefor it should finish
+  # within reasonable time. more put heavy processing in diverted_processing()
+  # typically reimplemented in subclasses
+  def initial_processing
+    raise NotImplementedError.new("This method is only implemented in subclasses")
+  end
+
+  # this method is called by the process queue worker. put time intensive processing
+  # jobs in here.
+  # typically reimplemented in subclasses
+  def diverted_processing
+    raise NotImplementedError.new("This method is only implemented in subclasses")
   end
 
   # change the discriminator based on the mime_type returns an instance of 'itself'
   # exclamation mark reminds us that this method _saves_ the asset...
   def recast!
-    [Video, Image].each do |klass|
+    [Video, Image, Generic].each do |klass|
       if klass.accepts_file?(tmp_file_path, mimetype)
         self.discriminator = klass
         save
@@ -142,10 +142,29 @@ class Asset
     klass.get! id
   end
 
+
+  def self.next_job
+    # TODO: Test this!!!!
+    self.first(:state => "queued_for_processing", :order => [:queued_for_processing_at])
+#     (id, d) = repository.adapter.query(%Q{
+#       SELECT id, discriminator FROM assets
+#       WHERE state = 'queued_for_processing'
+#       ORDER BY queued_for_processing_at LIMIT 1})[0].to_a
+#     return false unless id and d
+#     klass = Kernel.const_get d
+#     klass.get! id
+  end
+
+  # reimplement this in subclasses that have have derived assets
+  def obliterate!
+    # TODO: should this raise an exception if the file does not exist?
+    self.delete_from_store
+    self.destroy
+  end
+
   def self.mimetype_blacklist
     %w{something/x-wrong with-these/x-mimetypes}
   end
-  
 
 
   # Interaction with Store
@@ -178,30 +197,32 @@ class Asset
   # Notifications
   # =============
   
+  def self.outstanding_notifications
+    self.all(:notification_state => ['notification_pending', 'notification_delivery_failed'],
+             :state => ['ok', 'processing_error'])
+  end
+  
   def notification_wait_period
-    (Merb::Config[:notification_frequency] * self.notification.to_i)
+    (Merb::Config[:notification_frequency] * self.notification_tries.to_i)
   end
   
   def time_to_send_notification?
-    return true if self.last_notification_at.nil?
+    return true if self.last_notification_at.blank?
     Time.now > (self.last_notification_at + self.notification_wait_period)
   end
   
   def send_notification
-    raise "You can only send the status of encodings" unless self.encoding?
-    
     self.last_notification_at = Time.now
     begin
-      self.parent_video.send_status_update_to_client
-      self.notification = 'success'
+      self.send_status_update_to_client
+      self.notification_delivered
       self.save
-      Merb.logger.info "Notification successfull"
+      Merb.logger.info "Notification successfully sent for asset '#{id}'"
     rescue
-      # Increment num retries
-      if self.notification.to_i >= Merb::Config[:notification_retries]
-        self.notification = 'error'
+      if self.notification_tries.to_i >= Merb::Config[:notification_tries]
+        self.give_up_notification_delivery
       else
-        self.notification = self.notification.to_i + 1
+        self.notification_tries = self.notification_tries.to_i + 1
       end
       self.save
       raise
@@ -209,18 +230,15 @@ class Asset
   end
   
   def send_status_update_to_client
-    Merb.logger.info "Sending notification to #{self.state_update_url}"
-    
-    params = {"video" => self.show_response.to_yaml}
-    
-    uri = URI.parse(self.state_update_url)
+    Merb.logger.info "Sending notification to #{self.state_update_url} for asset '#{id}'"
+    uri = URI.parse(self.notification_url)
     http = Net::HTTP.new(uri.host, uri.port)
-
     req = Net::HTTP::Post.new(uri.path)
-    req.form_data = params
+    req.form_data = { id => self.to_json }.to_json
     response = http.request(req)
     
-    unless response.code.to_i == 200# and response.body.match /ok/
+    unless response.code.to_i == 200  # and response.body.match /ok/
+      # TODO decide if we want this error logger or merb-exception
       ErrorSender.log_and_email("notification error", "Error sending notification for parent video #{self.id} to #{self.state_update_url} (POST)
 
 REQUEST PARAMS
@@ -235,30 +253,26 @@ RESPONSE
   end
 
 
-  def to_json
-    result = {}
-    %w{id discriminator filename original_filename mimetype original_mimetype state queued_at processing_started_at upload_success_redirect_url upload_failure_redirect_url notification_url notification_state last_notification_sent_at updated_at created_at}.each do |p|
-      value = self.send(p)
-      if p == 'discriminator'
-        result['type'] = value.to_s == 'Asset' ? 'Generic' : value.to_s
-      else
-        result[p] = value.to_s if value  # actually to_json is better, but is seems to have a problem...
-      end
-    end
-    result.to_json
-  end
+# work this out... look at the show_response method of panda as well
 
-private
-
-  def tmp_file_path
-    Merb::Config[:tmp_dir] / filename
-  end
-
-#   def compose_tmp_filename(*args)
-#     compose_path(:tmp_dir, *args)
+#   # since to_json has some issues (im afraid ActiveSupport related) we do it like this..
+#   def to_json
+#     result = {}
+#     %w{id discriminator filename original_filename mimetype original_mimetype state queued_at processing_started_at upload_success_redirect_url upload_failure_redirect_url notification_url notification_state last_notification_sent_at updated_at created_at}.each do |p|
+#       value = self.send(p)
+#       if p == 'discriminator'
+#         result['type'] = value.to_s
+#       else
+#         result[p] = value.to_json if value  # actually to_json is better, but is seems to have a problem...
+#       end
+#     end
+#     result.to_json
 #   end
-  
-  def compose_path(option, *args)
-    Merb::Config[option] / args.map { |e| e.to_s }.join('_')
+
+protected
+
+  def tmp_file_path(filename = nil)
+    Merb::Config[:tmp_dir] / (filename or self.filename)
   end
+
 end

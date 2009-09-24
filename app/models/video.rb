@@ -1,178 +1,59 @@
 class Video < Asset
   
-  property :duration, Integer
-  property :container, String
   property :width, Integer
   property :height, Integer
+  property :duration, Integer
+  property :container, String
   property :video_codec, String
   property :video_bitrate, String
   property :fps, Integer
   property :audio_codec,String 
   property :audio_bitrate, String
   property :audio_sample_rate, String
-
   property :encoding_time, String
   property :encoded_at, String
-
   property :thumbnail_position, String
-
   property :derived_assets, Json
 
+  class VideoError < AssetError; end
+  class VideoFormatNotRecognized < VideoError; end
+  class VideoInvalid < VideoError; end
+  class VideoTooShort < VideoError; end
 
+  # re-implemented
   def self.accepts_file?(tmp_file, mimetype)
     return false if Video.blacklisted_mimetypes.include? mimetype
     inspector = RVideo::Inspector.new(:file => tmp_file)
     return (inspector.valid? and inspector.video?)
   end
 
-  # re-implemented
-  def process_payload
-    pick_metadata
-    queue_for_processing
-    send_to_store
-  end
-
   # mimetype that we for sure cannot handle (we further accept files base on RVideo inspectors judgement)
   def self.blacklisted_mimetypes
     Image.accepted_mimetypes + %w{some/x-type other/x-type}  # blacklist all image types + more
   end
-  
-  def clipping(position = nil)
-    Clipping.new(self, position)
-  end
-  
-  def clippings
-    self.thumbnail_percentages.map do |p|
-      Clipping.new(self, p)
-    end
-  end
-  
 
-  # Finders
-  # =======
-  
-  def self.queued_encodings
-    self.all(:status => 'queued_for_encoding') + self.all(:status => 'processing')
-    # TODO: Doesn't work
-    # self.all(:status => ['queued', 'processing'])
+  # re-implemented from superclass
+  def initial_processing
+    self.pick_metadata
+    self.queue_for_processing
+    self.send_to_store
+    self.save
+  end
+
+  # re-implemented from superclass
+  def diverted_processing
+    self.create_derived_assets
   end
   
-  def self.next_job
-    # TODO: Doesn't work
-    # self.first(:status => "queued")
-    self.all(:status => 'queued_for_encoding').sort_by { |o| o.created_at }.first
-  end
-  
-  def self.outstanding_notifications
-    # TODO: Do this in one query
-    self.all(:notification.not => "success", :notification.not => "error", :status => "success") +
-    self.all(:notification.not => "success", :notification.not => "error", :status => "error") 
-  end
-  
-  def encodings
-    self.class.all(:parent => self.id)
-  end
-  
-  def successful_encodings
-    self.class.all(:parent => self.id, :status => "success")
-  end
-  
-  def find_encoding_for_profile(p)
-    self.class.all(:parent => self.id, :profile => p.id)
-  end
-  
-  # Attr helpers
-  # ============
-  
-  # Delete an original video and all it's encodings.
+  # delete an original video and all it's derived assets, then removes it from the db as well
+  # re-implemented
   def obliterate!
-    # TODO: should this raise an exception if the file does not exist?
-    self.delete_from_store
-    self.encodings.each do |e|
-      e.delete_from_store
-      e.destroy
-    end
-    self.destroy
-  end
-  
-  def duration_str
-    s = (self.duration.to_i || 0) / 1000
-    "#{sprintf("%02d", s/60)}:#{sprintf("%02d", s%60)}"
-  end
-  
-  def resolution
-    (width and height) ? "#{self.width}x#{self.height}" : nil
-  end
-  
-  def video_bitrate_in_bits
-    self.video_bitrate.to_i * 1024
-  end
-  
-  def audio_bitrate_in_bits
-    self.audio_bitrate.to_i * 1024
-  end
-  
-  # Interaction with store
-  # ======================
-  
-  # reimplemented
-  def delete_from_store
-    Store.delete(self.filename)
-    self.clippings.each { |c| c.delete_from_store }
-    Store.delete(self.clipping.filename(:screenshot, :default => true))
-    Store.delete(self.clipping.filename(:thumbnail, :default => true))
+    self.delete_derived_assets  # fs
+    Store.delete(filename)  # fs
+    self.destroy  # db
   rescue AbstractStore::FileDoesNotExistError
     false
   end
-  
-  # Returns configured number of 'middle points', for example [25,50,75]
-  def thumbnail_percentages
-    n = Merb::Config[:video_stills]
-    return [50] unless n
-    interval = 100.0 / (n + 1)  # interval length
-    points = (0..(n + 1)).map { |p| p * interval }.map { |p| p.to_i }  # i.e.: [0,25,50,75,100] with n=3
-    return points[1..-2]  # don't include the first and the last
-  end
-  
-  def generate_thumbnail_selection
-    self.thumbnail_percentages.each do |percentage|
-      self.clipping(percentage).capture
-      self.clipping(percentage).resize
-    end
-  end
-  
-  def upload_thumbnail_selection
-    self.thumbnail_percentages.each do |percentage|
-      self.clipping(percentage).upload_to_store
-      self.clipping(percentage).delete_locally
-    end
-  end
-  
-
-  
-  # Uploads video to store, generates thumbnails if required, cleans up 
-  # temporary file, and adds encodings to the encoding queue.
-  # 
-  def finish_processing_and_queue_encodings
-    self.upload_to_store
-    
-    # Generate thumbnails before we add to encoding queue
-    self.generate_thumbnail_selection
-    self.clipping(self.thumbnail_percentages.first).set_as_default
-    self.upload_thumbnail_selection
-    
-    self.thumbnail_position = self.thumbnail_percentages.first
-    self.save
-    
-    self.add_to_queue
-    
-    FileUtils.rm self.tmp_filepath
-  end
-  
-  class VideoError < AssetError; end
-  class VideoFormatNotRecognized < VideoError; end
-  class VideoInvalid < VideoError; end
-  class VideoTooShort < VideoError; end
 
   # Reads information about the video into attributes.
   def pick_metadata
@@ -198,308 +79,245 @@ class Video < Asset
     # Don't allow videos with a duration of 0
     raise VideoTooShort if self.duration == 0
   end
-  
-  def create_encoding_for_profile(p)
-    encoding = Video.new
-    encoding.status = 'queued'
-    encoding.filename = "#{encoding.id}.#{p.container}"
-    
-    # Attrs from the parent video
-    encoding.parent = self.id
-    [:original_filename, :duration].each do |k|
-      encoding.send("#{k}=", self.attribute_get(k))
-    end
-    
-    # Attrs from the profile
-    encoding.profile = p.id
-    encoding.profile_title = p.title
-    [:container, :width, :height, :video_codec, :video_bitrate, :fps, :audio_codec, :audio_bitrate, :audio_sample_rate, :player].each do |k|
-      encoding.send("#{k}=", p.attribute_get(k))
-    end
-    
-    encoding.save
-    return encoding
-  end
-  
-  # TODO: Breakout Profile adding into a different method
-  def add_to_queue
-    # Die if there aren't any profiles
-    if Profile.all.empty?
-      Merb.logger.error "There are no encoding profiles!"
-      return nil
-    end
-    
-    # TODO: Allow manual selection of encoding profiles used in both form and api
-    # For now we will just encode to all available profiles
-    Profile.all.each do |p|
-      if self.find_encoding_for_profile(p).empty?
-        self.create_encoding_for_profile(p)
-      end
-    end
-    return true
-  end
 
   
-  # API
-  # ===
-  
-  # Hash of paramenters for video and encodings when video.xml/yaml requested.
-  # 
-  # See the specs for an example of what this returns
-  # 
-  def show_response
-    r = {
-      :video => {
-        :id => self.id,
-        :status => self.status
-      }
-    }
-    
-    # Common attributes for originals and encodings
-    if self.status == 'original' or self.encoding?
-      [:filename, :original_filename, :width, :height, :duration].each do |k|
-        r[:video][k] = self.send(k)
-      end
-      r[:video][:screenshot]  = self.clipping.filename(:screenshot)
-      r[:video][:thumbnail]   = self.clipping.filename(:thumbnail)
-    end
-    
-    # If the video is a parent, also return the data for all its encodings
-    if self.status == 'original'
-      r[:video][:encodings] = self.encodings.map {|e| e.show_response}
-    end
-    
-    # Reutrn extra attributes if the video is an encoding
-    if self.encoding?
-      r[:video].merge! \
-        [:parent, :profile, :profile_title, :encoded_at, :encoding_time].
-          map_to_hash { |k| {k => self.send(k)} }
-    end
-    
-    return r
-  end
-  
-  # Notifications
-  # =============
-  
-  def notification_wait_period
-    (Merb::Config[:notification_frequency] * self.notification.to_i)
-  end
-  
-  def time_to_send_notification?
-    return true if self.last_notification_at.nil?
-    Time.now > (self.last_notification_at + self.notification_wait_period)
-  end
-  
-  def send_notification
-    raise "You can only send the status of encodings" unless self.encoding?
-    
-    self.last_notification_at = Time.now
-    begin
-      self.parent_video.send_status_update_to_client
-      self.notification = 'success'
-      self.save
-      Merb.logger.info "Notification successfull"
-    rescue
-      # Increment num retries
-      if self.notification.to_i >= Merb::Config[:notification_retries]
-        self.notification = 'error'
-      else
-        self.notification = self.notification.to_i + 1
-      end
-      self.save
-      raise
-    end
-  end
-  
-  def send_status_update_to_client
-    Merb.logger.info "Sending notification to #{self.state_update_url}"
-    
-    params = {"video" => self.show_response.to_yaml}
-    
-    uri = URI.parse(self.state_update_url)
-    http = Net::HTTP.new(uri.host, uri.port)
+#   # API
+#   # ===
+#   
+#   # Hash of paramenters for video and encodings when video.xml/yaml requested.
+#   # 
+#   # See the specs for an example of what this returns
+#   # 
+#   def show_response
+# 
+#     r = {
+#       :video => {
+#         :id => self.id,
+#         :status => self.status
+#       }
+#     }
+#     
+#     # Common attributes for originals and encodings
+#     if self.status == 'original' or self.encoding?
+#       [:filename, :original_filename, :width, :height, :duration].each do |k|
+#         r[:video][k] = self.send(k)
+#       end
+#       r[:video][:screenshot]  = self.clipping.filename(:screenshot)
+#       r[:video][:thumbnail]   = self.clipping.filename(:thumbnail)
+#     end
+#     
+#     # If the video is a parent, also return the data for all its encodings
+#     if self.status == 'original'
+#       r[:video][:encodings] = self.encodings.map {|e| e.show_response}
+#     end
+#     
+#     # Reutrn extra attributes if the video is an encoding
+#     if self.encoding?
+#       r[:video].merge! \
+#         [:parent, :profile, :profile_title, :encoded_at, :encoding_time].
+#           map_to_hash { |k| {k => self.send(k)} }
+#     end
+#     
+#     return r
+#   end
 
-    req = Net::HTTP::Post.new(uri.path)
-    req.form_data = params
-    response = http.request(req)
-    
-    unless response.code.to_i == 200# and response.body.match /ok/
-      ErrorSender.log_and_email("notification error", "Error sending notification for parent video #{self.id} to #{self.state_update_url} (POST)
 
-REQUEST PARAMS
-#{"="*60}\n#{params.to_yaml}\n#{"="*60}
 
-RESPONSE
-#{response.code} #{response.message} (#{response.body.length})
-#{"="*60}\n#{response.body}\n#{"="*60}")
-      
-      raise NotificationError
-    end
+
+
+
+  # Processing, transcoding, creating stills
+  # ========================================
+
+  # returns configured number of 'middle points', for example [25,50,75]
+  def still_positions
+    n = Merb::Config[:video_stills]
+    return [50] unless n
+    interval = 100.0 / (n + 1)  # interval length
+    points = (0..(n + 1)).map { |p| p * interval }.map { |p| p.to_i }  # i.e.: [0,25,50,75,100] with n=3
+    return points[1..-2]  # don't include the first and the last
   end
   
-  # Encoding
-  # ========
-  
-  def ffmpeg_resolution_and_padding
+  def ffmpeg_resolution_and_padding(width, height)
     # Calculate resolution and any padding
-    in_w = self.parent_video.width.to_f
-    in_h = self.parent_video.height.to_f
-    out_w = self.width.to_f
-    out_h = self.height.to_f
-
+    in_w = self.width.to_f
+    in_h = self.height.to_f
+    out_w = width.to_f
+    out_h = height.to_f
     begin
       aspect = in_w / in_h
     rescue
       Merb.logger.error "Couldn't do w/h to caculate aspect. Just using the output resolution now."
-      return %(-s #{self.width}x#{self.height})
+      return %(-s #{width}x#{height})
     end
-
     height = (out_w / aspect.to_f).to_i
     height -= 1 if height % 2 == 1
-
-    opts_string = %(-s #{self.width}x#{height} )
-
-    # Crop top and bottom is the video is too tall, but add top and bottom bars if it's too wide (aspect wise)
-    if height > out_h
+    opts_string = %(-s #{width}x#{height} )
+    if height > out_h  # crop top and bottom is the video is too tall
       crop = ((height.to_f - out_h) / 2.0).to_i
       crop -= 1 if crop % 2 == 1
       opts_string += %(-croptop #{crop} -cropbottom #{crop})
-    elsif height < out_h
+    elsif height < out_h  # add top and bottom bars if it's too wide (aspect wise)
       pad = ((out_h - height.to_f) / 2.0).to_i
       pad -= 1 if pad % 2 == 1
       opts_string += %(-padtop #{pad} -padbottom #{pad})
     end
-
     return opts_string
   end
   
-  def ffmpeg_resolution_and_padding_no_cropping
-    # Calculate resolution and any padding
-    in_w = self.parent_video.width.to_f
-    in_h = self.parent_video.height.to_f
-    out_w = self.width.to_f
-    out_h = self.height.to_f
-
+  # calculate resolution and any padding for use with ffmpeg
+  def ffmpeg_resolution_and_padding_no_cropping(width, height)
+    in_w = self.width.to_f
+    in_h = self.height.to_f
+    out_w = width.to_f
+    out_h = height.to_f
     begin
       aspect = in_w / in_h
       aspect_inv = in_h / in_w
     rescue
       Merb.logger.error "Couldn't do w/h to caculate aspect. Just using the output resolution now."
-      return %(-s #{self.width}x#{self.height} )
+      return %(-s #{width}x#{height} )
     end
-
     height = (out_w / aspect.to_f).to_i
     height -= 1 if height % 2 == 1
-
-    opts_string = %(-s #{self.width}x#{height} )
-
-    # Keep the video's original width if the height
-    if height > out_h
+    opts_string = %(-s #{width}x#{height} )
+    if height > out_h  # keep the video's original width if the height
       width = (out_h / aspect_inv.to_f).to_i
       width -= 1 if width % 2 == 1
-
-      opts_string = %(-s #{width}x#{self.height} )
-      self.width = width
-      self.save
-    # Otherwise letterbox it
-    elsif height < out_h
+      opts_string = %(-s #{width}x#{height} )
+    elsif height < out_h  # otherwise letterbox it
       pad = ((out_h - height.to_f) / 2.0).to_i
       pad -= 1 if pad % 2 == 1
       opts_string += %(-padtop #{pad} -padbottom #{pad})
     end
-
     return opts_string
   end
-  
-  def recipe_options(input_file, output_file)
-    {
-      :input_file => input_file,
-      :output_file => output_file,
-      :container => self.container, 
-      :video_codec => self.video_codec,
-      :video_bitrate_in_bits => self.video_bitrate_in_bits.to_s, 
-      :fps => self.fps,
-      :audio_codec => self.audio_codec.to_s, 
-      :audio_bitrate => self.audio_bitrate.to_s, 
-      :audio_bitrate_in_bits => self.audio_bitrate_in_bits.to_s, 
-      :audio_sample_rate => self.audio_sample_rate.to_s, 
-      :resolution => self.resolution,
-      :resolution_and_padding => self.ffmpeg_resolution_and_padding_no_cropping
-    }
-  end
-  
-  def encode_flv_flash
-    Merb.logger.info "Encoding with encode_flv_flash"
-    transcoder = RVideo::Transcoder.new
-    recipe = "ffmpeg -i $input_file$ -ar 22050 -ab $audio_bitrate$k -f flv -b $video_bitrate_in_bits$ -r 24 $resolution_and_padding$ -y $output_file$"
-    recipe += "\nflvtool2 -U $output_file$"
-    transcoder.execute(recipe, self.recipe_options(self.parent_video.tmp_filepath, self.tmp_filepath))
-  end
-  
-  def encode_mp4_aac_flash
-    Merb.logger.info "Encoding with encode_mp4_aac_flash"
-    transcoder = RVideo::Transcoder.new
-    recipe = "ffmpeg -i $input_file$ -acodec libfaac -ar 48000 -ab $audio_bitrate$k -ac 2 -b $video_bitrate_in_bits$ -vcodec libx264 -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.6 -qmin 10 -qmax 51 -qdiff 4 -coder 1 -flags +loop -cmp +chroma -partitions +parti4x4+partp8x8+partb8x8 -subq 5 -me_range 16 -g 250 -keyint_min 25 -sc_threshold 40 -i_qfactor 0.71 $resolution_and_padding$ -r 24 -threads 4 -y $output_file$"
-    transcoder.execute(recipe, self.recipe_options(self.parent_video.tmp_filepath, self.tmp_filepath))
-  end
-  
-  def encode_unknown_format
-    Merb.logger.info "Encoding with encode_unknown_format"
-    transcoder = RVideo::Transcoder.new
-    recipe = "ffmpeg -i $input_file$ -f $container$ -vcodec $video_codec$ -b $video_bitrate_in_bits$ -ar $audio_sample_rate$ -ab $audio_bitrate$k -acodec $audio_codec$ -r 24 $resolution_and_padding$ -y $output_file$"
-    Merb.logger.info "Unknown encoding format given but trying to encode anyway."
-    transcoder.execute(recipe, recipe_options(self.parent_video.tmp_filepath, self.tmp_filepath))
-  end
-  
-  def encode
-    raise "You can only encode encodings" unless self.encoding?
-    self.status = "processing"
-    self.save
-    
-    begun_encoding = Time.now
-    
-    begin
-      encoding = self
-      parent_obj = self.parent_video
-      Merb.logger.info "(#{Time.now.to_s}) Encoding #{self.id}"
-    
-      parent_obj.fetch_from_store
 
-      if self.container == "flv" and self.player == "flash"
-        self.encode_flv_flash
-      elsif self.container == "mp4" and self.audio_codec == "aac" and self.player == "flash"
-        self.encode_mp4_aac_flash
-      else # Try straight ffmpeg encode
-        self.encode_unknown_format
+  # used by obliterate!() and create_derived_assets()
+  def delete_derived_assets
+    return false if derived_assets.blank? or not derived_assets.respond_to? :each_key
+    derived_assets.each_key { |k| Store.delete(k) }
+    self.derived_assets = nil
+    save
+  end
+  
+  # this method does the heavy lifting: transcoding and creating stills
+  def create_derived_assets
+    raise "Could not start processing #{self.id}" unless processing_started  # change the state
+    self.save
+    begun_processing = Time.now
+    Merb.logger.info "(#{begun_processing}) Processing #{id}"
+    delete_derived_assets  # first delete all derived assets (if any)
+    
+    derived = {}  # this will keep info on the derived assets: { filename1 => { <info> }, filename2 => ... }
+    begin
+      fetch_from_store
+
+      # start with transcoding the video according to the transcoding_profiles
+      transcoder = RVideo::Transcoder.new
+      Merb::Config[:transcoding_profiles].each_pair do |name, profile|
+        recipe = transcoding_filename = ''
+        if profile[:container] == "flv"
+          Merb.logger.info "Encoding with encode_flv_flash"
+          recipe = "ffmpeg -i $input_file$ -ar 22050 -ab $audio_bitrate$k -f flv -b $video_bitrate_in_bits$ -r 24 $resolution_and_padding$ -y $output_file$"
+          recipe += "\nflvtool2 -U $output_file$"
+          transcoding_filename = "#{id}_#{name}.flv"
+        elsif profile[:container] == "mp4" and profile[:audio_codec] == "aac"
+          Merb.logger.info "Encoding with encode_mp4_aac_flash"
+          recipe = "ffmpeg -i $input_file$ -acodec libfaac -ar 48000 -ab $audio_bitrate$k -ac 2 -b $video_bitrate_in_bits$ -vcodec libx264 -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.6 -qmin 10 -qmax 51 -qdiff 4 -coder 1 -flags +loop -cmp +chroma -partitions +parti4x4+partp8x8+partb8x8 -subq 5 -me_range 16 -g 250 -keyint_min 25 -sc_threshold 40 -i_qfactor 0.71 $resolution_and_padding$ -r 24 -threads 4 -y $output_file$"
+          transcoding_filename = "#{id}_#{name}.mp4"
+        else  # try straight ffmpeg encode
+          Merb.logger.info "Encoding with encode_unknown_format"
+          recipe = "ffmpeg -i $input_file$ -f $container$ -vcodec $video_codec$ -b $video_bitrate_in_bits$ -ar $audio_sample_rate$ -ab $audio_bitrate$k -acodec $audio_codec$ -r 24 $resolution_and_padding$ -y $output_file$"
+          transcoding_filename = "#{id}_#{name}.#{profile[:container]}"
+        end
+        transcoder.execute(recipe, recipe_options(profile, tmp_file_path, tmp_file_path(transcoding_filename)))
+        derived[transcoding_filename] = { :type => 'transcoding', :recipe => recipe, :profile => profile, :transcoded_at => Time.now.to_json }
       end
       
-      self.upload_to_store
-      self.generate_thumbnail_selection
-      self.clipping.set_as_default
-      self.upload_thumbnail_selection
-      
-      self.notification = 0
-      self.status = "success"
-      self.encoded_at = Time.now
-      self.encoding_time = (Time.now - begun_encoding).to_i
-      self.save
+      # create some stills for each transcoding
+      transcoding_filenames = derived.keys
+      transcoding_filenames.each do |tf|
+        basename = tf[0..(-File.extname(tf).length-1)]  # remove extention
+        still_positions.each do |position|
+          still_filename = "#{basename}_#{position}.jpg"
+          RVideo::FrameCapturer.capture!(:input => tmp_file_path(tf), :output => tmp_file_path(still_filename), :offset => "#{position}%")
+          derived[still_filename] = { :type => 'still', :created_at => Time.now.to_json, :position => "#{position}%" }
+        end
+      end
 
-      Merb.logger.info "Removing tmp video files"
-      FileUtils.rm self.tmp_filepath
-      FileUtils.rm parent_obj.tmp_filepath
-      
-      Merb.logger.info "Encoding successful"
-    rescue
-      self.notification = 0
-      self.status = "error"
+      # put the derived assets in the store and delete the temporary files
+      derived.each_key do |d|  # iterate over the derived assets' filenames
+        Store.set(d, tmp_file_path(d))
+        FileUtils.rm tmp_file_path(d)
+      end
+      FileUtils.rm tmp_file_path  # remove temporary local copy of the master video
+
+      self.derived_assets = derived  # save the data of the derived assets
+      self.processing_finished_at = Time.now
+      self.processing_successful
+      self.start_sending_notification
       self.save
-      FileUtils.rm parent_obj.tmp_filepath
       
-      Merb.logger.error "Unable to transcode file #{self.id}: #{$!.class} - #{$!.message}"
-        
-      raise
+      processing_time = (Time.now - begun_processing).to_i
+      Merb.logger.info "Successfully processed #{id} in #{processing_time} secs"
+    rescue => e
+      # TODO remove derived...
+      FileUtils.rm tmp_file_path
+      derived.each_key do |d|  # iterate over the derived assets' filenames
+        FileUtils.rm tmp_file_path(d)
+      end
+      self.processing_failed
+      self.start_sending_notification
+      self.save
+      Merb.logger.error "Processing of #{self.id} failed: #{$!.class} - #{$!.message}"
+      raise e
     end
   end
 
+  # basically merges: arguments, profile data and the return values of some method
+  # returns a receipe as RVideo likes 'm
+  def recipe_options(profile, input_file, output_file)
+    {
+      :input_file => input_file,
+      :output_file => output_file,
+      :container => profile[:container], 
+      :video_codec => profile[:video_codec],
+      :video_bitrate_in_bits => (profile[:video_bitrate] * 1024).to_s, 
+      :fps => profile[:fps],
+      :audio_codec => profile[:audio_codec],
+      :audio_bitrate => profile[:audio_bitrate].to_s, 
+      :audio_bitrate_in_bits => (profile[:audio_bitrate] * 1024).to_s, 
+      :audio_sample_rate => profile[:audio_sample_rate].to_s,
+      :resolution => "#{profile[:width]}x#{profile[:height]}",
+      :resolution_and_padding => ffmpeg_resolution_and_padding_no_cropping(profile[:width], profile[:height])
+    }
+  end
+
 end
+
+
+
+# some more receipes:  (we use the panda defaults)
+
+# recipe = "ffmpeg -i $input_file$ -ar 22050 -ab 48 -vcodec h264 -f mp4 -b #{video[:video_bitrate]} -r #{inspector.fps} -s" 
+# recipe = "ffmpeg -i $input_file$ -ar 22050 -ab 48 -f flv -b $video_bitrate$ -r $fps$ -s"
+
+# using -an to disable audio for now
+# recipe = "ffmpeg -i $input_file$ -an -f flv -b $video_bitrate$ -s $resolution$ -y $output_file$" 
+
+# Some crazy h264 stuff
+# ffmpeg -y -i matrix.mov -v 1 -threads 1 -vcodec h264 -b 500 -bt 175 -refs 2 -loop 1 -deblockalpha 0 -deblockbeta 0 -parti4x4 1 -partp8x8 1 -partb8x8 1 -me full -subq 6 -brdo 1 -me_range 21 -chroma 1 -slice 2 -max_b_frames 0 -level 13 -g 300 -keyint_min 30 -sc_threshold 40 -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.7 -qmax 35 -max_qdiff 4 -i_quant_factor 0.71428572 -b_quant_factor 0.76923078 -rc_max_rate 768 -rc_buffer_size 244 -cmp 1 -s 720x304 -acodec aac -ab 64 -ar 44100 -ac 1 -f mp4 -pass 1 matrix-h264.mp4
+
+# ffmpeg -y -i matrix.mov -v 1 -threads 1 -vcodec h264 -b 500 -bt 175 -refs 2 -loop 1 -deblockalpha 0 -deblockbeta 0 -parti4x4 1 -partp8x8 1 -partb8x8 1 -me full -subq 6 -brdo 1 -me_range 21 -chroma 1 -slice 2 -max_b_frames 0 -level 13 -g 300 -keyint_min 30 -sc_threshold 40 -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.7 -qmax 35 -max_qdiff 4 -i_quant_factor 0.71428572 -b_quant_factor 0.76923078 -rc_max_rate 768 -rc_buffer_size 244 -cmp 1 -s 720x304 -acodec aac -ab 64 -ar 44100 -ac 1 -f mp4 -pass 2 matrix-h264.mp4
+
+# max_b_frames option not working, need to upgrade to ffmpeg svn. 
+# See: http://lists.mplayerhq.hu/pipermail/ffmpeg-user/2006-September/004186.html
+# recipe = "ffmpeg -y -i $input_file$ -v 1 -threads 1 -vcodec h264 -b $video_bitrate$ -bt 175 -refs 2 -loop 1 -deblockalpha 0 -deblockbeta 0 -parti4x4 1 -partp8x8 1 -partb8x8 1 -me full -subq 6 -brdo 1 -me_range 21 -chroma 1 -slice 2 -max_b_frames 0 -level 13 -g 300 -keyint_min 30 -sc_threshold 40 -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.7 -qmax 35 -max_qdiff 4 -i_quant_factor 0.71428572 -b_quant_factor 0.76923078 -rc_max_rate 768 -rc_buffer_size 244 -cmp 1 -s $resolution$ -acodec aac -ab $audio_sample_rate$ -ar 44100 -ac 1 -f mp4 -pass 1 $output_file$"
+# recipe += "ffmpeg -y -i $input_file$ -v 1 -threads 1 -vcodec h264 -b $video_bitrate$ -bt 175 -refs 2 -loop 1 -deblockalpha 0 -deblockbeta 0 -parti4x4 1 -partp8x8 1 -partb8x8 1 -me full -subq 6 -brdo 1 -me_range 21 -chroma 1 -slice 2 -max_b_frames 0 -level 13 -g 300 -keyint_min 30 -sc_threshold 40 -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.7 -qmax 35 -max_qdiff 4 -i_quant_factor 0.71428572 -b_quant_factor 0.76923078 -rc_max_rate 768 -rc_buffer_size 244 -cmp 1 -s $resolution$ -acodec aac -ab $audio_sample_rate$ -ar 44100 -ac 1 -f mp4 -pass 2 $output_file$"
+
+# recipe = "ffmpeg -i $input_file$ -an -vcodec libx264 -b $video_bitrate$ -bt $video_bitrate$ -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.6 -qmin 10 -qmax 51 -qdiff 4 -coder 1 -flags +loop -cmp +chroma -partitions +parti4x4+partp8x8+partb8x8 -me hex -subq 5 -me_range 16 -g 250 -keyint_min 25 -sc_threshold 40 -i_qfactor 0.71 -s $resolution$ -y $output_file$"
+# 2 pass encoding is slllloooowwwwwww
+# recipe = "ffmpeg -y -i $input_file$ -an -pass 1 -vcodec libx264 -b $video_bitrate$ -flags +loop -cmp +chroma -partitions +parti4x4+partp8x8+partb8x8 -flags2 +mixed_refs -me umh -subq 5 -trellis 1 -refs 3 -bf 3 -b_strategy 1 -coder 1 -me_range 16 -g 250 -keyint_min 25 -sc_threshold 40 -i_qfactor 0.71 -bt $video_bitrate$k -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.8 -qmin 10 -qmax 51 -qdiff 4 $output_file$"
+# recipe += "\nffmpeg -y -i $input_file$ -an -pass 2 -vcodec libx264 -b $video_bitrate$ -flags +loop -cmp +chroma -partitions +parti4x4+partp8x8+partb8x8 -flags2 +mixed_refs -me umh -subq 5 -trellis 1 -refs 3 -bf 3 -b_strategy 1 -coder 1 -me_range 16 -g 250 -keyint_min 25 -sc_threshold 40 -i_qfactor 0.71 -bt $video_bitrate$k -rc_eq 'blurCplx^(1-qComp)' -qcomp 0.8 -qmin 10 -qmax 51 -qdiff 4 $output_file$"
+

@@ -22,11 +22,8 @@ Merb::Config.use do |c|
   # clients as name-key pairs
   c[:clients]               = [["client001", "key001"], ["client002", "key002"]]
 
+  # the temp dir (there the transcoding happens):
   c[:tmp_dir]               = Merb.root / "tmp" / "assets"
-  # Defaults to tmp within the Panda public directory. Optionally configurable   TODO: need this?
-  # c[:public_tmp_path]       = "/var/www/images"
-  # c[:public_tmp_url]        = "http://images.app.com"
-
 
   # Storage location for uploaded and encoded videos
   
@@ -48,8 +45,17 @@ Merb::Config.use do |c|
   # This many thumbnail options will 
   # automatically be generated. The positions of these stills will be 
   # equally distributed throughout the video.
-
   c[:video_stills]          = 6 
+
+  # Videos assets are transconded into _all_ these:
+  c[:transcoding_profiles]  = {
+      "sd" => {
+        :title => 'Flash h264 SD', :container => 'mp4', :width => 320, :height => 240, :video_codec => nil, :video_bitrate => 300, :fps => 24, :audio_codec => 'aac', :audio_bitrate => 48, :audio_sample_rate => nil },
+      "hi" => {
+        :title => 'Flash h264 HI', :container => 'mp4', :width => 480, :height => 360, :video_codec => nil, :video_bitrate => 400, :fps => 24, :audio_codec => 'aac', :audio_bitrate => 48, :audio_sample_rate => nil },
+#         "480p" => {
+#           :title => 'Flash h264 HI', :container => 'mp4', :width => 852, :height => 480, :video_codec => nil, :video_bitrate => 600, :fps => 24, :audio_codec => 'aac', :audio_bitrate => 48, :audio_sample_rate => nil },
+    }
   
   # ================================================
   # Application notification
@@ -57,11 +63,13 @@ Merb::Config.use do |c|
   # Panda will send your application a notfication when a video has finished
   # encoding. If it fails it will retry notification_retries times. These 
   # values are the defaults and should work for most applications.
+  # Frequency is the number of seconds till the first retry, the number of seconds
+  # till the second retry is 2 times longer, 3 times to the third, etc.
   
-  c[:notification_retries]  = 6
-  c[:notification_frequency]= 10
+  c[:notification_tries]      = 6
+  c[:notification_frequencyy] = 10  # in seconds (till 1st retry)
   
-  # ================================================
+  # ================================================  TODO make error notification work (merb-exceptions!!)
   # Get emailed error messages
   # ================================================
   # If you want errors emailed to you, when an encoding fails or panda fails 
@@ -80,7 +88,8 @@ end
  
 Merb::BootLoader.after_app_loads do
   # This will get executed after your app's classes have been loaded.
-  
+  require 'json/pure'  # fix the mess that active_support leave behind.
+   
   unless Merb.environment =~ /test/
     require "config" / "mailer" if Merb::Config[:notification_email]
   end

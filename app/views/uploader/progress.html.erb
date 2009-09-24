@@ -1,7 +1,7 @@
 <% throw_content(:head) do %>
 <script type="text/javascript" charset="utf-8">
 	$(function() {
-		jQuery.nginxUploadProgress({uuid: "<%= params[:id] %>"});
+		jQuery.nginxUploadProgress({id: "<%= params[:id] %>"});
 	});
 </script>
 <% end %>

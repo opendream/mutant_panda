@@ -3,6 +3,10 @@ merb_gems_version = "1.0.12"
 dm_gems_version   = "0.9.11"
 do_gems_version   = "0.9.12"
 
+# require this first as it breaks JSON badly...
+dependency 'activesupport', '2.3.4'  # needed by greatseth-rvideo
+dependency 'activesupport'
+
 # For more information about each component, please read http://wiki.merbivore.com/faqs/merb_components
 dependency "merb-core", merb_gems_version 
 dependency "merb-action-args", merb_gems_version
@@ -13,11 +17,7 @@ dependency("merb-cache", merb_gems_version) do
   end
 end
 dependency "merb-helpers", merb_gems_version 
-dependency "merb-mailer", merb_gems_version  
-# dependency "merb-slices", merb_gems_version  
-# dependency "merb-auth-core", merb_gems_version
-# dependency "merb-auth-more", merb_gems_version
-# dependency "merb-auth-slice-password", merb_gems_version
+dependency "merb-mailer", merb_gems_version
 dependency "merb-param-protection", merb_gems_version
 dependency "merb-exceptions", merb_gems_version
 
@@ -37,9 +37,6 @@ dependency "merb_datamapper", merb_gems_version
 
 
 dependency 'RubyInline', :require_as => 'inline'
-# dependency 'uuid'
-dependency 'uuidtools', '~> 1.0.7'
-dependency 'activesupport', '2.3.4'  # needed by greatseth-rvideo
 dependency 'greatseth-rvideo', :require_as => 'rvideo'  # a gem from github: gem install greatseth-rvideo -s http://gems.github.com
 #dependency 'aws-s3', :require_as => 'aws/s3'  # when using S3
 dependency 'shared-mime-info'

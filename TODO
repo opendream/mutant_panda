@@ -1,0 +1,9 @@
+TODO
+====
+
+- mutate the SPECS from the original panda over to the mutant panda
+- notifier, finish it off
+- specs
+- make the jquery-nginx uploader work as a demo (including error message dialog)
+- make exception notification work, see config/init.rb and merb-exceptions
+- did i say specs already??
