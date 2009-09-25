@@ -96,7 +96,8 @@ class Asset
     self.mimetype = mimetype
     self.original_mimetype = file[:content_type]
     FileUtils.mv(file[:tempfile].path, tmp_file_path)  # move file into our tmp location
-    upload_accepted  # update state
+    self.upload_accepted  # update state
+    self.state = 'upload_accepted'
   end
   
   # used to cast the asset to its specific type in the recast! method

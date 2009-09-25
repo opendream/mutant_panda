@@ -4,14 +4,17 @@
   :adapter: sqlite3
   :database: db/development.db 
 
-:production: &prod
-  :adapter: mysql
-  :database: panda_production
-  :username: panda
-  :password: panda-password
-  :host: localhost
-  :encoding: utf8
-  :socket: /var/run/mysqld/mysqld.sock
+:production:
+  <<: *defaults
+
+# :production: &prod
+#   :adapter: mysql
+#   :database: panda_production
+#   :username: panda
+#   :password: panda-password
+#   :host: localhost
+#   :encoding: utf8
+#   :socket: /var/run/mysqld/mysqld.sock
 
 :test:
   <<: *prod
