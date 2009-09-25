@@ -15,6 +15,15 @@ How does Mutant Panda work?
 4. A callback sent to your web application notifying the derived assets have been created (if applicable)
 
 
+The Workers
+===========
+Mutant panda knows two workers, the queue_processor (for diverted_processing) and the notifier (making http callbacks to the clients).
+
+merb -r bin/queue_processor.rb -p 5001 -e production
+merb -r bin/notifier.rb -p 6001 -e production
+
+
+
 The REST api
 ============
 

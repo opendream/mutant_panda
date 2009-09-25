@@ -48,8 +48,8 @@ class Video < Asset
   # delete an original video and all it's derived assets, then removes it from the db as well
   # re-implemented
   def obliterate!
-    self.delete_derived_assets  # fs
-    Store.delete(filename)  # fs
+    self.delete_derived_assets_from_store
+    Store.delete(filename)
     self.destroy  # db
   rescue AbstractStore::FileDoesNotExistError
     false
@@ -194,7 +194,7 @@ class Video < Asset
   end
 
   # used by obliterate!() and create_derived_assets()
-  def delete_derived_assets
+  def delete_derived_assets_from_store
     return false if derived_assets.blank? or not derived_assets.respond_to? :each_key
     derived_assets.each_key { |k| Store.delete(k) }
     self.derived_assets = nil
@@ -203,11 +203,12 @@ class Video < Asset
   
   # this method does the heavy lifting: transcoding and creating stills
   def create_derived_assets
-    raise "Could not start processing #{self.id}" unless processing_started  # change the state
+    self.processing_started!  # change the state
+    self.state = "processing"  # sometimes the previous line doesnt work, this makes sure it works TODO isolate and file this bug
     self.save
     begun_processing = Time.now
     Merb.logger.info "(#{begun_processing}) Processing #{id}"
-    delete_derived_assets  # first delete all derived assets (if any)
+    delete_derived_assets_from_store  # first delete all derived assets (if any)
     
     derived = {}  # this will keep info on the derived assets: { filename1 => { <info> }, filename2 => ... }
     begin
@@ -255,20 +256,26 @@ class Video < Asset
 
       self.derived_assets = derived  # save the data of the derived assets
       self.processing_finished_at = Time.now
-      self.processing_successful
+      self.processing_successful!
       self.start_sending_notification
-      self.save
+      raise "Could not save asset '#{self.id}'" unless self.save
       
       processing_time = (Time.now - begun_processing).to_i
       Merb.logger.info "Successfully processed #{id} in #{processing_time} secs"
     rescue => e
-      # TODO remove derived...
-      FileUtils.rm tmp_file_path
-      derived.each_key do |d|  # iterate over the derived assets' filenames
-        FileUtils.rm tmp_file_path(d)
+      # remove derived without failing on errors
+      begin
+        FileUtils.rm tmp_file_path
+        derived.each_key do |d|  # iterate over the derived assets' filenames
+          begin
+            FileUtils.rm tmp_file_path(d)
+          rescue  # do not worrie about errors
+          end
+        end
+      rescue  # do not worrie about errors
       end
       self.processing_failed
-      self.start_sending_notification
+      self.start_sending_notification if not self.notification_url.blank?
       self.save
       Merb.logger.error "Processing of #{self.id} failed: #{$!.class} - #{$!.message}"
       raise e

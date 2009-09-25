@@ -9,4 +9,6 @@ Merb::Config.use { |c|
   c[:log_file]  = Merb.root / "log" / "test.log"
   # or redirect logger using IO handle
   # c[:log_stream] = STDOUT
+
+  c[:clients] += [["test_client", "test_key"]] if Merb.env == 'testing'
 }

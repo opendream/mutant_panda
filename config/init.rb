@@ -22,6 +22,7 @@ Merb::Config.use do |c|
   # clients as name-key pairs
   c[:clients]               = [["client001", "key001"], ["client002", "key002"]]
 
+
   # the temp dir (there the transcoding happens):
   c[:tmp_dir]               = Merb.root / "tmp" / "assets"
 
@@ -67,7 +68,7 @@ Merb::Config.use do |c|
   # till the second retry is 2 times longer, 3 times to the third, etc.
   
   c[:notification_tries]      = 6
-  c[:notification_frequencyy] = 10  # in seconds (till 1st retry)
+  c[:notification_frequency]  = 10  # in seconds (till 1st retry)
   
   # ================================================  TODO make error notification work (merb-exceptions!!)
   # Get emailed error messages

@@ -207,12 +207,19 @@ class Asset
   end
   
   def time_to_send_notification?
-    return true if self.last_notification_at.blank?
-    Time.now > (self.last_notification_at + self.notification_wait_period)
+    return true if self.last_notification_sent_at.blank?
+    Time.now > (self.last_notification_sent_at + self.notification_wait_period)
   end
   
   def send_notification
-    self.last_notification_at = Time.now
+    if self.notification_url.blank?
+      self.notification_not_needed!
+      # sometimes the previous line doesnt work, this makes sure it works TODO isolate and file this bug
+      self.notification_state = 'notification_not_needed'  
+      self.save
+      return true
+    end
+    self.last_notification_sent_at = Time.now
     begin
       self.send_status_update_to_client
       self.notification_delivered
@@ -221,6 +228,7 @@ class Asset
     rescue
       if self.notification_tries.to_i >= Merb::Config[:notification_tries]
         self.give_up_notification_delivery
+        self.notification_state = 'give_up_notification_delivery'
       else
         self.notification_tries = self.notification_tries.to_i + 1
       end
@@ -230,16 +238,17 @@ class Asset
   end
   
   def send_status_update_to_client
-    Merb.logger.info "Sending notification to #{self.state_update_url} for asset '#{id}'"
-    uri = URI.parse(self.notification_url)
+    Merb.logger.info "Sending notification to #{self.notification_url} for asset '#{id}'"
+    uri = Kernel::URI.parse(self.notification_url)
     http = Net::HTTP.new(uri.host, uri.port)
     req = Net::HTTP::Post.new(uri.path)
     req.form_data = { id => self.to_json }.to_json
     response = http.request(req)
-    
-    unless response.code.to_i == 200  # and response.body.match /ok/
+    if response.code.to_i == 200  # and response.body.match /ok/
+      self.notification_delivered
+    else
       # TODO decide if we want this error logger or merb-exception
-      ErrorSender.log_and_email("notification error", "Error sending notification for parent video #{self.id} to #{self.state_update_url} (POST)
+      ErrorSender.log_and_email("notification error", "Error sending notification for parent video #{self.id} to #{self.notification_url} (POST)
 
 REQUEST PARAMS
 #{"="*60}\n#{params.to_yaml}\n#{"="*60}

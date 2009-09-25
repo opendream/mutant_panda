@@ -3,7 +3,7 @@
 Merb.logger.info 'Asset queue processor awake!'
 
 loop do
-  sleep Merb::Config[:queue_processor_poll_frequency] or 5
+  sleep (Merb::Config[:queue_processor_poll_frequency] or 5)
   Merb.logger.debug "Checking for jobs... #{Time.now}"
   if obj = Asset.next_job  # return a properly casted asset, or false
     begin

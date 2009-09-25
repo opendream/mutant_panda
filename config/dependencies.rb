@@ -3,9 +3,8 @@ merb_gems_version = "1.0.12"
 dm_gems_version   = "0.9.11"
 do_gems_version   = "0.9.12"
 
-# require this first as it breaks JSON badly...
-dependency 'activesupport', '2.3.4'  # needed by greatseth-rvideo
-dependency 'activesupport'
+# require this first as it breaks loads of things...
+#dependency "activesupport", '2.3.4'  # needed by greatseth-rvideo
 
 # For more information about each component, please read http://wiki.merbivore.com/faqs/merb_components
 dependency "merb-core", merb_gems_version 

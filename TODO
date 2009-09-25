@@ -6,4 +6,46 @@ TODO
 - specs
 - make the jquery-nginx uploader work as a demo (including error message dialog)
 - make exception notification work, see config/init.rb and merb-exceptions
+- finalize on the jsonification of assets for REST requests
 - did i say specs already??
+
+
+
+
+
+
+
+irb(main):001:0> a = Asset.first
+ ~ (0.000894) SELECT "id", "discriminator", "client", "filename", "original_filename", "mimetype", "original_mimetype", "state", "queued_for_processing_at", "processing_started_at", "processing_finished_at", "upload_success_redirect_url", "upload_failure_redirect_url", "notification_url", "notification_tries", "notification_state", "last_notification_sent_at", "updated_at", "created_at" FROM "assets" ORDER BY "id" LIMIT 1
+=> #<Video id="je4ngbivtwEDAbmIqDDV" discriminator=Video client="client001" filename="je4ngbivtwEDAbmIqDDV.mov" original_filename="passenger_nginx.mov" mimetype="video/quicktime" original_mimetype="video/quicktime" state="ok" queued_for_processing_at=Fri, 25 Sep 2009 14:27:19 +0530 processing_started_at=nil processing_finished_at=Fri, 25 Sep 2009 14:30:43 +0530 upload_success_redirect_url=nil upload_failure_redirect_url=nil notification_url=nil notification_tries=6 notification_state="notification_not_needed" last_notification_sent_at=nil updated_at=Fri, 25 Sep 2009 14:50:35 +0530 created_at=Fri, 25 Sep 2009 14:26:57 +0530 width=<not loaded> height=<not loaded> duration=<not loaded> container=<not loaded> video_codec=<not loaded> video_bitrate=<not loaded> fps=<not loaded> audio_codec=<not loaded> audio_bitrate=<not loaded> audio_sample_rate=<not loaded> encoding_time=<not loaded> encoded_at=<not loaded> thumbnail_position=<not loaded> derived_assets=<not loaded>>
+
+irb(main):003:0> a.notification_url
+=> nil
+
+irb(main):004:0> a.notification_url = "http://locahost:4000/QWEQWE"
+=> "http://locahost:4000/QWEQWE"
+
+irb(main):005:0> a.save
+ ~ (0.000155) SELECT "id" FROM "assets" WHERE ("discriminator" IN ('Video')) AND ("id" = 'je4ngbivtwEDAbmIqDDV') ORDER BY "id" LIMIT 1
+ ~ (0.000259) SELECT "id", "discriminator", "client", "filename", "original_filename", "mimetype", "original_mimetype", "state", "queued_for_processing_at", "processing_started_at", "processing_finished_at", "upload_success_redirect_url", "upload_failure_redirect_url", "notification_url", "notification_tries", "notification_state", "last_notification_sent_at", "updated_at", "created_at", "width", "height", "duration", "container", "video_codec", "video_bitrate", "fps", "audio_codec", "audio_bitrate", "audio_sample_rate", "encoding_time", "encoded_at", "thumbnail_position", "discriminator" FROM "assets" WHERE ("id" = 'je4ngbivtwEDAbmIqDDV') ORDER BY "id"
+=> true
+
+irb(main):006:0> a.dirty?
+=> false
+
+irb(main):008:0> a.notification_url
+=> nil
+
+irb(main):009:0> a.notification_url = "http://locahost:4000/QWEQWE"
+=> "http://locahost:4000/QWEQWE"
+
+irb(main):010:0> a.notification_url
+=> "http://locahost:4000/QWEQWE"
+
+irb(main):011:0> a.dirty?
+=> true
+
+irb(main):012:0> a.save
+ ~ (0.000142) SELECT "id" FROM "assets" WHERE ("discriminator" IN ('Video')) AND ("id" = 'je4ngbivtwEDAbmIqDDV') ORDER BY "id" LIMIT 1
+ ~ (0.119293) UPDATE "assets" SET "updated_at" = '2009-09-25T14:53:16+05:30', "notification_url" = 'http://locahost:4000/QWEQWE' WHERE ("id" = 'je4ngbivtwEDAbmIqDDV')
+=> true

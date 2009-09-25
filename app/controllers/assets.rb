@@ -16,9 +16,9 @@ class Assets < Application
     ensure_client_owns_asset
 
     # this is a simple (no progressbar) upload form:
-#     return "<form action='/upload/#{@asset.id}' method='post' enctype='multipart/form-data'><input type='file' name='file'/><input type='submit' value='Send'/></form>"
+    return "<form action='/upload/#{@asset.id}' method='post' enctype='multipart/form-data'><input type='file' name='file'/><input type='submit' value='Send'/></form>"
 
-    render :layout => 'uploader'  # this is a fancy upload mechanism (uses jquery+nginx plugins)
+#     render :layout => 'uploader'  # this is a fancy upload mechanism (uses jquery+nginx plugins)
   end
 
   # create an empty asset, ready to be uploaded to
