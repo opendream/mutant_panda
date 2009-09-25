@@ -63,7 +63,11 @@ class Assets < Application
         raise NotAcceptable.new("Could not save the asset")  # 406
       end
     rescue => e
-      redirect((obj.upload_failure_redirect_url or raise e))
+      if obj
+        redirect obj.upload_failure_redirect_url
+      else
+        raise e
+      end
     end
   end
 
