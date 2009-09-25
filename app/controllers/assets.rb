@@ -39,8 +39,8 @@ class Assets < Application
   def upload(id)
     # no need to check if the client owns this asset, since the asset id is unguessably secret...
     begin
-      @asset = Asset.get(id)  # before file is uploaded all assets are of base type Asset
-      @asset.accept_upload(params[:file])
+      p @asset = Asset.get(id)  # before file is uploaded all assets are of base type Asset
+      p @asset.accept_upload(params[:file])
     rescue DataMapper::ObjectNotFoundError  # No empty video object exists
       raise NotFound  # 404
     rescue Asset::NoFileSubmitted
@@ -49,12 +49,13 @@ class Assets < Application
       raise Forbidden  # 403
     rescue Asset::MimeTypeBlacklisted
       raise UnsupportedMediaType  # 415
-#     rescue => e
-#       Merb.logger.error "#{params[:id]}: (500 returned to client) #{msg}" + (exception ? "#{exception}\n#{exception.backtrace.join("\n")}" : '')
-#       raise InternalServerError  # 500
+    rescue => e
+      Merb.logger.error "#{params[:id]}: (500 returned to client) #{msg}" + (exception ? "#{exception}\n#{exception.backtrace.join("\n")}" : '')
+      raise InternalServerError  # 500
     end
     begin
-      obj = @asset.recast!  # casts the asset to is proper type..
+      p @asset
+      p obj = @asset.recast!  # casts the asset to is proper type..
       obj.initial_processing  # should raise errors when it finds something inacceptable
       if obj.save
         redirect((obj.upload_success_redirect_url or raise Accepted.new(
