@@ -126,11 +126,11 @@ class Asset
     [Video, Image, Generic].each do |klass|
       if klass.accepts_file?(tmp_file_path, mimetype)
         self.discriminator = klass
-        save
+        save!
         return klass.get(self.id)
       end
     end
-    save
+    save!
     return self
   end
 

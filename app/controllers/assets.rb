@@ -6,7 +6,7 @@ class Assets < Application
 
   # be nice, give some info
   def info
-    { :service => "mutant panda", :version => "0.1", :operated_by => "opendream" }.to_json
+    display({ :service => "mutant panda", :version => "0.1", :operated_by => "opendream" })
   end
 
   # should only be used for testing purpose -- undocumented in the RESTapi
@@ -32,7 +32,7 @@ class Assets < Application
     Merb.logger.info "#{@asset.id}: Created asset"
     self.status = 201  # Created
     headers.merge!({'Location'=> "/assets/#{@asset.id}"})  # obey the http 1.1 spec
-    @asset.id.to_json
+    display @asset.id
   end
 
   # this is where the file get uploaded to
@@ -76,7 +76,8 @@ class Assets < Application
   def show
     set_asset
     ensure_client_owns_asset
-    @asset.to_json
+    @asset.discriminator = "Type:#{@asset.discriminator.name}"
+    display @asset
   end
   
   # delete the asset
@@ -85,7 +86,7 @@ class Assets < Application
     ensure_client_owns_asset
     id = @asset.id
     @asset.obliterate!
-    { 'deleted' => id }.to_json
+    display({ 'deleted' => id })
   end
   
 
