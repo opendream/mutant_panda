@@ -21,7 +21,7 @@ class Image < Asset
   end
 
   def self.accepted_mimetypes
-    %w{image/bmp image/gif image/jpeg image/tiff image/png}  # TODO check this with the features of the thumbnailer
+    %w{image/bmp image/gif image/jpeg image/jpg image/tiff image/png}  # TODO check this with the features of the thumbnailer
   end
 
 end
