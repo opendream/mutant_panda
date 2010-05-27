@@ -20,3 +20,4 @@ public/tmp
 gems/gems/*/ext
 *.bundle
 *~
+tmp/*
