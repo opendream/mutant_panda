@@ -4,6 +4,9 @@ jQuery.nginxUploadProgress = function(settings) {
    progress_bar_id: "progressbar",
    nginx_progress_url: "/progress"
  }, settings);
+
+ $('#upload').get(0).action = $('#upload').get(0).action + "?X-Progress-ID=" + settings['id'];
+
  
  var options = { 
       beforeSubmit: function(formData, jqForm, options) {
@@ -47,7 +50,7 @@ jQuery.nginxUploadProgressFetch = function(e, nginx_progress_url, progress_bar_i
    url: nginx_progress_url,
    dataType: "json",
    beforeSend: function(xhr) {
-     xhr.setRequestHeader("X-Progress-ID", id);
+     xhr.setRequestHeader("X-Progress-ID", settings['id']);
      // window.console.log("setting headers: "+id)
    },
    complete: function(xhr, statusText) {

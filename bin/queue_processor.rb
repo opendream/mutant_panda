@@ -8,20 +8,21 @@ loop do
   if obj = Asset.next_job  # return a properly casted asset, or false
     begin
       obj.diverted_processing
-    rescue  
+    rescue => e
       begin
         # TODO do we want this error sender or merb-exceptions
-        ErrorSender.log_and_email("encoding error", "Error encoding #{video.key}
-
-#{$!}
-
-PARENT ATTRS
-
-#{"="*60}\n#{video.parent_video.attributes.to_h.to_yaml}\n#{"="*60}
-
-ENCODING ATTRS
-
-#{"="*60}\n#{video.attributes.to_h.to_yaml}\n#{"="*60}")
+        raise e
+#        ErrorSender.log_and_email("encoding error", "Error encoding #{video.key}
+#
+##{$!}
+#
+#PARENT ATTRS
+#
+##{"="*60}\n#{video.parent_video.attributes.to_h.to_yaml}\n#{"="*60}
+#
+#ENCODING ATTRS
+#
+##{"="*60}\n#{video.attributes.to_h.to_yaml}\n#{"="*60}")
       rescue
         Merb.logger.error "Error sending error using ErrorSender.log_and_email - very erroneous! (#{$!})"
       end

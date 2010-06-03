@@ -16,9 +16,10 @@ class Assets < Application
     ensure_client_owns_asset
 
     # this is a simple (no progressbar) upload form:
-    return "<form action='/upload/#{@asset.id}' method='post' enctype='multipart/form-data'><input type='file' name='file'/><input type='submit' value='Send'/></form>"
+    #return "<form action='/upload/#{@asset.id}' method='post' enctype='multipart/form-data'><input type='file' name='file'/><input type='submit' value='Send'/></form>"
 
-#     render :layout => 'uploader'  # this is a fancy upload mechanism (uses jquery+nginx plugins)
+    #render :layout => 'uploader'  # this is a fancy upload mechanism (uses jquery+nginx plugins)
+    render :test
   end
 
   # create an empty asset, ready to be uploaded to
@@ -58,8 +59,12 @@ class Assets < Application
       p obj = @asset.recast!  # casts the asset to is proper type..
       obj.initial_processing  # should raise errors when it finds something inacceptable
       if obj.save
-        redirect(("#{obj.upload_success_redirect_url}/#{obj.id}" or raise Accepted.new(
+        if !obj.upload_success_redirect_url
+          return 'OK'
+        else
+          redirect(("#{obj.upload_success_redirect_url}" or raise Accepted.new(
           "No success_url has been supplied so you see this message")))  # 202
+        end
       else
         raise NotAcceptable.new("Could not save the asset")  # 406
       end
