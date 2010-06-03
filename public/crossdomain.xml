@@ -1,5 +1,9 @@
 <?xml version="1.0"?>
 <!DOCTYPE cross-domain-policy SYSTEM "http://www.macromedia.com/xml/dtds/cross-domain-policy.dtd">
 <cross-domain-policy>
+<<<<<<< HEAD
    <allow-access-from domain="*" headers="*" secure="false"/>
+=======
+   <allow-access-from domain="*" headers="*" secure='false' />
+>>>>>>> fc8dd0e513518b8ab8228ec36ba28ea6e8760790
 </cross-domain-policy>

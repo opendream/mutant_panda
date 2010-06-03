@@ -1,0 +1,20 @@
+<% throw_content(:head) do %>
+<script type="text/javascript" charset="utf-8">
+	$(function() {
+		jQuery.nginxUploadProgress({id: "<%= params[:id] %>"});
+	});
+</script>
+<% end %>
+
+<div id="pandaloader">
+  <div id="uploader">
+    <form id="upload" action='/upload/<%= @asset.id %>' method='post' enctype='multipart/form-data'>
+      <input type='file' name='file'/><input type='submit' value='Send'/>
+    </form>
+  </div>
+	<div id="uploading">
+		<div id="progress" class="bar">
+			<div id="progressbar">&nbsp;</div>
+		</div>
+	</div>
+</div>

@@ -20,4 +20,8 @@ public/tmp
 gems/gems/*/ext
 *.bundle
 *~
+<<<<<<< HEAD
 tmp/assets/*
+=======
+tmp/*
+>>>>>>> fc8dd0e513518b8ab8228ec36ba28ea6e8760790
