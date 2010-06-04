@@ -59,19 +59,11 @@ class Assets < Application
       p obj = @asset.recast!  # casts the asset to is proper type..
       obj.initial_processing  # should raise errors when it finds something inacceptable
       if obj.save
-<<<<<<< HEAD
         if !obj.upload_success_redirect_url
           return 'OK'
         else
           redirect(("#{obj.upload_success_redirect_url}" or raise Accepted.new(
           "No success_url has been supplied so you see this message")))  # 202
-=======
-        if obj.upload_success_redirect_url
-          redirect(("#{obj.upload_success_redirect_url}" or raise Accepted.new(
-          "No success_url has been supplied so you see this message")))  # 202
-        else
-          return "OK"
->>>>>>> fc8dd0e513518b8ab8228ec36ba28ea6e8760790
         end
       else
         raise NotAcceptable.new("Could not save the asset")  # 406
