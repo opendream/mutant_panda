@@ -37,7 +37,7 @@ Merb::Config.use do |c|
   
   # for filesystem storage:
   c[:store]                 = :filesystem
-  c[:store_base_url]        = "localhost:4000/store"
+  c[:store_base_url]        = "10.0.1.216:4001/store"
   c[:store_dir]             = Merb.root / "public" / "store"
   
   # ================================================
@@ -49,13 +49,31 @@ Merb::Config.use do |c|
   c[:video_stills]          = 6 
 
   # Videos assets are transconded into _all_ these:
-  c[:transcoding_profiles]  = {
+  c[:transcoding_profiles] = {
       "sd" => {
-        :title => 'Flash h264 SD', :container => 'mp4', :width => 320, :height => 240, :video_codec => nil, :video_bitrate => 300, :fps => 24, :audio_codec => 'aac', :audio_bitrate => 48, :audio_sample_rate => nil },
-      "hi" => {
-        :title => 'Flash h264 HI', :container => 'mp4', :width => 480, :height => 360, :video_codec => nil, :video_bitrate => 400, :fps => 24, :audio_codec => 'aac', :audio_bitrate => 48, :audio_sample_rate => nil },
-#         "480p" => {
-#           :title => 'Flash h264 HI', :container => 'mp4', :width => 852, :height => 480, :video_codec => nil, :video_bitrate => 600, :fps => 24, :audio_codec => 'aac', :audio_bitrate => 48, :audio_sample_rate => nil },
+        :title => 'Flash h264 SD',
+        :container => 'mp4',
+        :width => 640,
+        :height => 360,
+        :video_codec => 'libx264',
+        :video_bitrate => 400,
+        :fps => 24,
+        :audio_codec => 'aac',
+        :audio_bitrate => 48,
+        :audio_sample_rate => nil
+      },
+      #"hi" => {
+      #  :title => 'Flash h264 HI',
+      #  :container => 'flv',
+      #  :width => 854,
+      #  :height => 480,
+      #  :video_codec => 'libx264',
+      #  :video_bitrate => 800,
+      #  :fps => 24,
+      #  :audio_codec => 'aac',
+      #  :audio_bitrate => 48,
+      #  :audio_sample_rate => nil
+      #},
     }
   
   # ================================================

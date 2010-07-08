@@ -12,6 +12,7 @@ videos/*
 config/mailer.rb
 config/deploy.rb
 config/panda_init_*.rb
+db/*
 panda_all_staging_nginx.conf
 public/images/tmp/*jpg
 public/store
@@ -20,8 +21,5 @@ public/tmp
 gems/gems/*/ext
 *.bundle
 *~
-<<<<<<< HEAD
 tmp/assets/*
-=======
 tmp/*
->>>>>>> fc8dd0e513518b8ab8228ec36ba28ea6e8760790

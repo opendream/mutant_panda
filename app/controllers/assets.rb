@@ -15,10 +15,6 @@ class Assets < Application
     set_asset
     ensure_client_owns_asset
 
-    # this is a simple (no progressbar) upload form:
-    #return "<form action='/upload/#{@asset.id}' method='post' enctype='multipart/form-data'><input type='file' name='file'/><input type='submit' value='Send'/></form>"
-
-    #render :layout => 'uploader'  # this is a fancy upload mechanism (uses jquery+nginx plugins)
     render :test
   end
 
@@ -55,7 +51,6 @@ class Assets < Application
       raise InternalServerError  # 500
     end
     begin
-      p @asset
       p obj = @asset.recast!  # casts the asset to is proper type..
       obj.initial_processing  # should raise errors when it finds something inacceptable
       if obj.save
@@ -81,10 +76,14 @@ class Assets < Application
   def show
     set_asset
     ensure_client_owns_asset
-    @asset.discriminator = "Type:#{@asset.discriminator.name}"
-    display @asset
+    if @asset.state == 'ok'
+      (@asset.derived_assets || []).each do |key, derive|
+        derive[:url] = Store.url(key)
+      end
+    end
+    display @asset, :methods => [:url]
   end
-  
+
   # delete the asset
   def delete
     set_asset
@@ -93,7 +92,7 @@ class Assets < Application
     @asset.obliterate!
     display({ 'deleted' => id })
   end
-  
+
 
 private
 

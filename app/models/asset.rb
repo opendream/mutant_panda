@@ -4,11 +4,11 @@
 # the queueing mechanism is already implemented in this class, it be in an abstract fashion
 
 # An asset of the base type Asset has no derived assets and needs no further processing,
-# if an asset need either of those a subclass of Asset has to be created for it. 
+# if an asset need either of those a subclass of Asset has to be created for it.
 
 class Asset
   include DataMapper::Resource
-  
+
   property :id, B62EncodedRandomIndex, :key => true
   property :discriminator, Discriminator
   property :client, String, :nullable => false
@@ -30,9 +30,10 @@ class Asset
 
   property :updated_at, DateTime
   property :created_at, DateTime
+  property :derived_assets, Json
 
   state_machine :initial => :empty do
-    after_transition  all => :queued_for_processing do
+    after_transition all => :queued_for_processing do
       self.queued_for_processing_at = Time.now
     end
     event :upload_accepted do
@@ -44,7 +45,7 @@ class Asset
     event :skip_processing do
       transition [:pending, :disapproved, :processing_error] => :ok
     end
-    event :queue_for_processing do
+    event :queued_for_processing do
       transition [:pending, :disapproved, :processing_error, :ok] => :queued_for_processing
     end
     event :processing_started do
@@ -56,7 +57,7 @@ class Asset
     event :processing_failed do
       transition :processing => :processing_error
     end
-  end  
+  end
 
  # unset, not_needed, pending, delivered, delivery_failed, gave_up
   state_machine :notification_state, :initial => :notification_unset do
@@ -98,7 +99,7 @@ class Asset
     FileUtils.mv(file[:tempfile].path, tmp_file_path)  # move file into our tmp location
     self.upload_accepted  # update state
   end
-  
+
   # used to cast the asset to its specific type in the recast! method
   # typically reimplemented in subclasses
   def self.accepts_file?(tmp_file, mimetype)
@@ -177,52 +178,55 @@ class Asset
   def send_to_store
     Store.set(filename, tmp_file_path)
   end
-  
+
   def fetch_from_store
     Store.get(filename, tmp_file_path)
   end
-  
-  # Deletes the video file without raising an exception if the file does 
+
+  # Deletes the video file without raising an exception if the file does
   # not exist.
   def delete_from_store
     Store.delete(filename)
   rescue AbstractStore::FileDoesNotExistError
     false
   end
-  
 
 
-  
+
+
 
   # Notifications
   # =============
-  
+
   def self.outstanding_notifications
     self.all(:notification_state => ['notification_pending', 'notification_delivery_failed'],
              :state => ['ok', 'processing_error'])
   end
-  
+
   def notification_wait_period
     (Merb::Config[:notification_frequency] * self.notification_tries.to_i)
   end
-  
+
   def time_to_send_notification?
-    return true if self.last_notification_sent_at.blank?
-    Time.now > (self.last_notification_sent_at + self.notification_wait_period)
+    if self.last_notification_sent_at.blank?
+      return true
+    else
+      return Time.now > (self.last_notification_sent_at + self.notification_wait_period)
+    end
   end
-  
+
   def send_notification
     if self.notification_url.blank?
       self.notification_not_needed!
       # sometimes the previous line doesnt work, this makes sure it works TODO isolate and file this bug
-      self.notification_state = 'notification_not_needed'  
+      self.notification_state = 'notification_not_needed'
       self.save
       return true
     end
     self.last_notification_sent_at = Time.now
     begin
       self.send_status_update_to_client
-      self.notification_delivered
+      self.notification_delivery_successful
       self.save
       Merb.logger.info "Notification successfully sent for asset '#{id}'"
     rescue
@@ -236,16 +240,23 @@ class Asset
       raise
     end
   end
-  
+
   def send_status_update_to_client
     Merb.logger.info "Sending notification to #{self.notification_url} for asset '#{id}'"
     uri = Kernel::URI.parse(self.notification_url)
     http = Net::HTTP.new(uri.host, uri.port)
     req = Net::HTTP::Post.new(uri.path)
-    req.form_data = { id => self.to_json }.to_json
+
+    if self.state == 'ok'
+      (self.derived_assets || []).each do |key, derive|
+        derive[:url] = Store.url(key)
+      end
+    end
+    req.form_data = { id => self.to_json(:method => [:url]) }
+
     response = http.request(req)
     if response.code.to_i == 200  # and response.body.match /ok/
-      self.notification_delivered
+      self.notification_delivery_successful
     else
       # TODO decide if we want this error logger or merb-exception
       ErrorSender.log_and_email("notification error", "Error sending notification for parent video #{self.id} to #{self.notification_url} (POST)
@@ -256,27 +267,10 @@ REQUEST PARAMS
 RESPONSE
 #{response.code} #{response.message} (#{response.body.length})
 #{"="*60}\n#{response.body}\n#{"="*60}")
-      
+
       raise NotificationError
     end
   end
-
-
-# work this out... look at the show_response method of panda as well
-
-#   # since to_json has some issues (im afraid ActiveSupport related) we do it like this..
-#   def to_json
-#     result = {}
-#     %w{id discriminator filename original_filename mimetype original_mimetype state queued_at processing_started_at upload_success_redirect_url upload_failure_redirect_url notification_url notification_state last_notification_sent_at updated_at created_at}.each do |p|
-#       value = self.send(p)
-#       if p == 'discriminator'
-#         result['type'] = value.to_s
-#       else
-#         result[p] = value.to_json if value  # actually to_json is better, but is seems to have a problem...
-#       end
-#     end
-#     result.to_json
-#   end
 
 protected
 
