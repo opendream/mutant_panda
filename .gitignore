@@ -3,6 +3,7 @@
 coverage
 uuid.state
 .DS_Store
+db/*
 database.yml
 schema.rb
 panda_init.rb
@@ -12,7 +13,6 @@ videos/*
 config/mailer.rb
 config/deploy.rb
 config/panda_init_*.rb
-db/*
 panda_all_staging_nginx.conf
 public/images/tmp/*jpg
 public/store

@@ -78,7 +78,7 @@ class Assets < Application
     ensure_client_owns_asset
     if @asset.state == 'ok'
       (@asset.derived_assets || []).each do |key, derive|
-        derive[:url] = Store.url(key)
+        derive['url'] = Store.url(key)
       end
     end
     display @asset, :methods => [:url]
