@@ -6,7 +6,7 @@
     pandaAjaxUploader: function (options) {
       // Settings
       var defaults = {
-        'server': 'http://203.151.20.184',
+        'server': 'http://localhost',
         'id': '',
         'interval': 1000,
         'path': './',
