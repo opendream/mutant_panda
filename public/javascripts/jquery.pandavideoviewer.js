@@ -8,10 +8,10 @@
         basePath: '',
         id: '',
         playlist: [],
-        playerPath: 'http://10.0.1.216:4001/store/flowplayer/flowplayer.swf',
+        playerPath: 'http://203.151.20.184/public/flowplayer/flowplayer.swf',
         player: 'flowplayer',
-        flowplayerControlPath: 'http://10.0.1.216:4001/store/flowplayer/flowplayer.controls.swf',
-        flowplayerPseudoStreamingPath: 'http://10.0.1.216:4001/store/flowplayer/flowplayer.pseudostreaming-3.2.2.swf'
+        flowplayerControlPath: 'http://203.151.20.184/public/flowplayer/flowplayer.controls.swf',
+        flowplayerPseudoStreamingPath: 'http://203.151.20.184/public/flowplayer/flowplayer.pseudostreaming-3.2.2.swf'
       }
 
       var options = $.extend(defaults, options);
